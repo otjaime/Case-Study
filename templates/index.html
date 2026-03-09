@@ -113,6 +113,22 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .loading-status {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .loading-detail {
+            font-size: 13px;
+            color: #999;
+        }
+
+        .word-count {
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+        }
+
         .result {
             display: none;
             margin-top: 32px;
@@ -179,6 +195,27 @@
             padding: 20px;
             font-size: 14px;
         }
+
+        .quality-bar {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            padding: 10px 16px;
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .quality-bar .score {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .quality-bar .score.high { color: #27ae60; }
+        .quality-bar .score.mid { color: #f39c12; }
+        .quality-bar .score.low { color: #c0392b; }
     </style>
 </head>
 <body>
@@ -213,8 +250,9 @@
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Researching company and generating case study...</p>
-            <p style="font-size: 13px; margin-top: 8px;">This usually takes 30-60 seconds.</p>
+            <p class="loading-status" id="loading-status">Starting...</p>
+            <p class="loading-detail" id="loading-detail"></p>
+            <p class="word-count" id="word-count"></p>
         </div>
 
         <div class="result" id="result">
@@ -224,11 +262,65 @@
             </div>
             <div class="context-bar" id="context-bar"></div>
             <div class="case-study" id="case-study"></div>
+            <div class="quality-bar" id="quality-bar" style="display:none;"></div>
         </div>
     </div>
 
     <script>
         let rawMarkdown = '';
+
+        const STATUS_MESSAGES = {
+            researching: 'Researching company...',
+            analyzing: 'Analyzing data...',
+            diagnosis: 'Diagnosing business challenges...',
+            generating: 'Generating case study...',
+        };
+
+        function renderContextTags(ctx) {
+            const bar = document.getElementById('context-bar');
+            bar.innerHTML = '';
+            const tags = [
+                ctx.business_model,
+                ctx.growth_stage,
+                ctx.seniority,
+                ctx.funding_stage !== 'unknown' ? ctx.funding_stage : null,
+            ];
+            if (ctx.competitors && ctx.competitors.length) {
+                tags.push('vs ' + ctx.competitors.join(', '));
+            }
+            if (ctx.marketing_channels && ctx.marketing_channels.length) {
+                tags.push(ctx.marketing_channels.join(', '));
+            }
+            tags.forEach(t => {
+                if (t && t !== 'unknown') {
+                    const span = document.createElement('span');
+                    span.className = 'context-tag';
+                    span.textContent = t;
+                    bar.appendChild(span);
+                }
+            });
+        }
+
+        function countWords(text) {
+            return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+        }
+
+        function renderQuality(quality) {
+            const bar = document.getElementById('quality-bar');
+            if (!quality || !quality.specificity) return;
+
+            function scoreClass(val) {
+                if (val >= 7) return 'high';
+                if (val >= 5) return 'mid';
+                return 'low';
+            }
+
+            bar.innerHTML =
+                `<span>Specificity: <span class="score ${scoreClass(quality.specificity)}">${quality.specificity}/10</span></span>` +
+                `<span>Realism: <span class="score ${scoreClass(quality.realism)}">${quality.realism}/10</span></span>` +
+                `<span>Difficulty: <span class="score ${scoreClass(quality.difficulty)}">${quality.difficulty}/10</span></span>`;
+            bar.style.display = 'flex';
+        }
 
         document.getElementById('form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -237,66 +329,123 @@
             const loading = document.getElementById('loading');
             const result = document.getElementById('result');
             const btn = document.getElementById('submit-btn');
+            const statusEl = document.getElementById('loading-status');
+            const detailEl = document.getElementById('loading-detail');
+            const wordCountEl = document.getElementById('word-count');
+            const caseStudyEl = document.getElementById('case-study');
 
             form.style.display = 'none';
             result.style.display = 'none';
             loading.style.display = 'block';
             btn.disabled = true;
+            rawMarkdown = '';
+            caseStudyEl.innerHTML = '';
+            statusEl.textContent = 'Starting...';
+            detailEl.textContent = '';
+            wordCountEl.textContent = '';
+            document.getElementById('quality-bar').style.display = 'none';
+
+            const payload = JSON.stringify({
+                company_name: document.getElementById('company_name').value,
+                domain: document.getElementById('domain').value,
+                job_title: document.getElementById('job_title').value,
+                jd_text: document.getElementById('jd_text').value,
+            });
 
             try {
-                const response = await fetch('/generate', {
+                const response = await fetch('/generate-stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        company_name: document.getElementById('company_name').value,
-                        domain: document.getElementById('domain').value,
-                        job_title: document.getElementById('job_title').value,
-                        jd_text: document.getElementById('jd_text').value,
-                    }),
+                    body: payload,
                 });
-
-                const data = await response.json();
-
-                loading.style.display = 'none';
 
                 if (!response.ok) {
-                    result.style.display = 'block';
-                    document.getElementById('case-study').innerHTML =
-                        '<p class="error-msg">' + (data.error || 'Something went wrong.') + '</p>';
-                    form.style.display = 'block';
-                    btn.disabled = false;
-                    return;
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Request failed');
                 }
 
-                rawMarkdown = data.markdown;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streaming = false;
 
-                // Render context tags
-                const ctx = data.context;
-                const bar = document.getElementById('context-bar');
-                bar.innerHTML = '';
-                const tags = [
-                    ctx.business_model,
-                    ctx.growth_stage,
-                    ctx.seniority,
-                    ctx.funding_stage !== 'unknown' ? ctx.funding_stage : null,
-                ];
-                if (ctx.competitors && ctx.competitors.length) {
-                    tags.push('vs ' + ctx.competitors.join(', '));
-                }
-                if (ctx.marketing_channels && ctx.marketing_channels.length) {
-                    tags.push(ctx.marketing_channels.join(', '));
-                }
-                tags.forEach(t => {
-                    if (t && t !== 'unknown') {
-                        const span = document.createElement('span');
-                        span.className = 'context-tag';
-                        span.textContent = t;
-                        bar.appendChild(span);
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const data = line.slice(6);
+
+                        if (data === '[DONE]') {
+                            // Finalize
+                            loading.style.display = 'none';
+                            if (rawMarkdown) {
+                                caseStudyEl.innerHTML = marked.parse(rawMarkdown);
+                            }
+                            result.style.display = 'block';
+                            continue;
+                        }
+
+                        let parsed;
+                        try { parsed = JSON.parse(data); } catch { continue; }
+
+                        if (parsed.error) {
+                            loading.style.display = 'none';
+                            result.style.display = 'block';
+                            caseStudyEl.innerHTML = '<p class="error-msg">' + parsed.error + '</p>';
+                            form.style.display = 'block';
+                            btn.disabled = false;
+                            return;
+                        }
+
+                        if (parsed.stage) {
+                            statusEl.textContent = STATUS_MESSAGES[parsed.stage] || parsed.stage;
+                            if (parsed.stage === 'researching') {
+                                detailEl.textContent = 'Querying Exa + Firecrawl APIs...';
+                            } else if (parsed.stage === 'analyzing') {
+                                detailEl.textContent = 'Building context and inferring challenges...';
+                            } else if (parsed.stage === 'diagnosis') {
+                                detailEl.textContent = 'Stage 1 of 2 — analyzing growth challenges...';
+                            } else if (parsed.stage === 'generating') {
+                                detailEl.textContent = 'Stage 2 of 2 — writing case study...';
+                                // Show result area with streaming content
+                                loading.style.display = 'none';
+                                result.style.display = 'block';
+                                streaming = true;
+                            }
+                        }
+
+                        if (parsed.context) {
+                            renderContextTags(parsed.context);
+                        }
+
+                        if (parsed.quality) {
+                            renderQuality(parsed.quality);
+                        }
+
+                        if (parsed.chunk) {
+                            rawMarkdown += parsed.chunk;
+                            // Re-render periodically (every ~20 chars to avoid excessive DOM updates)
+                            if (streaming) {
+                                caseStudyEl.innerHTML = marked.parse(rawMarkdown);
+                                wordCountEl.textContent = countWords(rawMarkdown) + ' words';
+                                // Auto-scroll to bottom
+                                window.scrollTo(0, document.body.scrollHeight);
+                            }
+                        }
                     }
-                });
+                }
 
-                // Render markdown
-                document.getElementById('case-study').innerHTML = marked.parse(rawMarkdown);
+                // Final render
+                if (rawMarkdown) {
+                    caseStudyEl.innerHTML = marked.parse(rawMarkdown);
+                    wordCountEl.textContent = countWords(rawMarkdown) + ' words — done';
+                }
                 result.style.display = 'block';
 
             } catch (err) {

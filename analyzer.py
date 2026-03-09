@@ -2,6 +2,8 @@
 
 import re
 
+import anthropic
+
 
 def _detect_seniority(job_title: str, job_text: str) -> str:
     """Infer seniority level from job title and description."""
@@ -116,8 +118,42 @@ def _extract_key_skills(job_text: str) -> list[str]:
     return skills
 
 
-def _infer_challenges(context: dict) -> list[str]:
-    """Best-guess growth challenges before sending to Claude."""
+def _infer_challenges(context: dict, scraped_data: dict) -> list[str]:
+    """Use Claude Haiku to infer specific challenges instead of keyword rules."""
+    news_raw = scraped_data.get("news", {}).get("raw", "")[:500]
+    funding_raw = scraped_data.get("funding", {}).get("raw", "")[:300]
+
+    prompt = f"""Company: {context['company_name']}
+Business model: {context['business_model']}
+Growth stage: {context['growth_stage']}
+Role being hired: {context['job_title']}
+Key skills required: {', '.join(context['key_skills_required'][:6])}
+Marketing channels: {', '.join(context.get('marketing_channels', [])) or 'none detected'}
+Competitors: {', '.join(context.get('competitors', [])) or 'none identified'}
+Recent news: {news_raw or 'none'}
+Funding info: {funding_raw or 'none'}
+
+List 4 specific growth challenges this company is likely facing right now.
+Each challenge must be specific to THIS company, not generic.
+Format: one challenge per line, no bullets, no numbers, no headers."""
+
+    try:
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text.strip()
+        challenges = [line.strip() for line in text.split("\n") if line.strip()]
+        return challenges[:5]
+    except Exception:
+        # Fallback to basic rule-based inference
+        return _infer_challenges_fallback(context)
+
+
+def _infer_challenges_fallback(context: dict) -> list[str]:
+    """Fallback rule-based challenges if Claude call fails."""
     challenges = []
     model = context.get("business_model", "unknown")
     stage = context.get("growth_stage", "unknown")
@@ -220,6 +256,7 @@ def build_context(job_data: dict, research_data: dict) -> dict:
         # Competitors
         "competitors": competitors,
         "competitive_raw": comp.get("positioning", "")[:2000],
+        "competitors_detail": comp.get("competitors_detail", "")[:3000],
         # News
         "recent_news": news_summary,
         "news_raw": news.get("raw", "")[:3000],
@@ -231,6 +268,6 @@ def build_context(job_data: dict, research_data: dict) -> dict:
         "inferred_challenges": [],
     }
 
-    context["inferred_challenges"] = _infer_challenges(context)
+    context["inferred_challenges"] = _infer_challenges(context, research_data)
 
     return context

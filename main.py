@@ -83,7 +83,7 @@ async def run(args: argparse.Namespace) -> None:
     console.print(f"  Claims found:   {len(context['notable_claims'])}")
 
     # 4. Generate case study
-    case_study = await generate_case_study(context)
+    case_study, diagnosis = await generate_case_study(context)
 
     # 5. Save output
     md_path = save_markdown(context, case_study, custom_name=args.name)

@@ -1,13 +1,50 @@
 """Deep company research using Exa (semantic search) and Firecrawl (website crawl)."""
 
 import asyncio
+import json
 import os
 import re
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from rich.console import Console
 
 console = Console()
+
+# ---------------------------------------------------------------------------
+# Domain-level cache (TTL 7 days)
+# ---------------------------------------------------------------------------
+
+CACHE_DIR = Path("/tmp/case_study_cache")
+CACHE_TTL = 7 * 24 * 3600  # 7 days
+
+
+def _cache_path(domain: str) -> Path:
+    CACHE_DIR.mkdir(exist_ok=True)
+    return CACHE_DIR / f"{domain.replace('.', '_').replace('/', '_')}.json"
+
+
+def _load_cache(domain: str) -> dict | None:
+    path = _cache_path(domain)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        if time.time() - data["cached_at"] > CACHE_TTL:
+            return None
+        console.print(f"  [dim]Cache hit for {domain}[/dim]")
+        return data["payload"]
+    except Exception:
+        return None
+
+
+def _save_cache(domain: str, payload: dict):
+    try:
+        path = _cache_path(domain)
+        path.write_text(json.dumps({"cached_at": time.time(), "payload": payload}))
+    except Exception:
+        pass  # cache failures are non-critical
 
 # ---------------------------------------------------------------------------
 # Exa helpers
@@ -115,7 +152,7 @@ async def research_competitors(company_name: str, domain: str) -> dict:
     """Search for competitors and market positioning."""
     exa = _get_exa_client()
     if not exa:
-        return {"competitors": [], "positioning": "", "raw": ""}
+        return {"competitors": [], "positioning": "", "raw": "", "competitors_detail": ""}
 
     console.print(f"  [dim]Exa: researching {company_name} competitors...[/dim]")
     try:
@@ -127,14 +164,97 @@ async def research_competitors(company_name: str, domain: str) -> dict:
         )
         texts = [r.text for r in results.results if r.text]
         combined = "\n---\n".join(texts)
+
+        competitors = _extract_competitors(combined, company_name)
+
+        # Secondary deep-dive on top 3 competitors
+        detail = await _research_competitors_detail(exa, competitors[:3])
+
         return {
-            "competitors": _extract_competitors(combined, company_name),
+            "competitors": competitors,
             "positioning": combined[:2000],
             "raw": combined[:4000],
+            "competitors_detail": detail,
         }
     except Exception as e:
         console.print(f"  [yellow]Exa competitor search failed: {e}[/yellow]")
-        return {"competitors": [], "positioning": "", "raw": ""}
+        return {"competitors": [], "positioning": "", "raw": "", "competitors_detail": ""}
+
+
+async def _research_competitors_detail(exa, competitors: list[str]) -> str:
+    """Run secondary Exa searches for each competitor to get deeper intel."""
+    if not competitors or not exa:
+        return ""
+
+    current_year = datetime.utcnow().year
+
+    async def _research_one(name: str) -> str:
+        try:
+            results = await asyncio.to_thread(
+                exa.search_and_contents,
+                f'"{name}" marketing strategy growth {current_year}',
+                num_results=3,
+                text={"maxCharacters": 1500},
+            )
+            texts = [r.text for r in results.results if r.text]
+            combined = "\n".join(texts)
+
+            channel = _infer_primary_channel(combined)
+            launches = _extract_recent_launches(combined, name)
+
+            lines = [f"**{name}**"]
+            if channel:
+                lines.append(f"  Primary channel: {channel}")
+            if launches:
+                lines.append(f"  Recent moves: {launches}")
+            lines.append(f"  Intel: {combined[:500]}")
+            return "\n".join(lines)
+        except Exception:
+            return f"**{name}**: no additional data found"
+
+    console.print(f"  [dim]Exa: deep-diving {len(competitors)} competitors...[/dim]")
+    tasks = [_research_one(c) for c in competitors]
+    results = await asyncio.gather(*tasks)
+    return "\n\n".join(results)
+
+
+def _infer_primary_channel(text: str) -> str:
+    """Quick heuristic to identify primary acquisition channel from text."""
+    t = text.lower()
+    scores = {
+        "Paid (Google/Meta)": 0,
+        "Organic/SEO": 0,
+        "Community/Word-of-mouth": 0,
+        "Enterprise Sales": 0,
+    }
+    for term in ["google ads", "facebook ads", "meta ads", "paid", "ppc", "ad spend", "roas"]:
+        if term in t:
+            scores["Paid (Google/Meta)"] += 1
+    for term in ["seo", "organic", "blog", "content marketing", "search ranking"]:
+        if term in t:
+            scores["Organic/SEO"] += 1
+    for term in ["community", "word of mouth", "viral", "referral", "ambassador"]:
+        if term in t:
+            scores["Community/Word-of-mouth"] += 1
+    for term in ["enterprise", "sales team", "outbound", "account executive", "demo"]:
+        if term in t:
+            scores["Enterprise Sales"] += 1
+
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else ""
+
+
+def _extract_recent_launches(text: str, company_name: str) -> str:
+    """Extract recent product launches or positioning changes."""
+    patterns = [
+        rf"{re.escape(company_name)}\s+(?:launched|announced|released|introduced|unveiled)\s+(.{{30,120}}?)(?:\.|$)",
+        r"(?:new feature|new product|rebrand|pivot|expansion)\s+(.{20,100}?)(?:\.|$)",
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m:
+            return m.group(0).strip()[:150]
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +380,14 @@ async def crawl_website(domain: str) -> dict:
 # ---------------------------------------------------------------------------
 
 async def research_all(company_name: str, domain: str) -> dict:
-    """Run all research functions in parallel and consolidate results."""
+    """Run all research functions in parallel and consolidate results.
+
+    Uses a domain-level file cache (TTL 7 days) to avoid redundant API calls.
+    """
+    cached = _load_cache(domain)
+    if cached:
+        return cached
+
     console.print("\n[bold]Researching company (Exa + Firecrawl)...[/bold]\n")
 
     funding, news, marketing, competitors, website = await asyncio.gather(
@@ -271,13 +398,16 @@ async def research_all(company_name: str, domain: str) -> dict:
         crawl_website(domain),
     )
 
-    return {
+    result = {
         "funding": funding,
         "news": news,
         "marketing": marketing,
         "competitors": competitors,
         "website": website,
     }
+
+    _save_cache(domain, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
