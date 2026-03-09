@@ -1,55 +1,52 @@
-"""Claude API calls and prompt logic for generating the case study."""
+"""Claude API calls and prompt logic for generating the business case."""
 
 import anthropic
 from rich.console import Console
 
 console = Console()
 
-SYSTEM_PROMPT = """You are a senior growth strategist preparing a targeted case study to accompany a job application. \
-Your goal is to demonstrate deep understanding of the company's specific growth challenges and show \
-how you would approach them in the first 90 days in the role.
+SYSTEM_PROMPT = """You are a senior growth strategist preparing an open business case document to accompany \
+a job application. The goal is NOT to present a finished plan — it's to demonstrate that you've done real \
+research, you understand the company's context deeply, and you have sharp questions and hypotheses worth \
+discussing in an interview.
 
-The output must feel like it was written by someone who has genuinely thought about this company — \
-not a generic framework. Use the data provided to make specific, grounded observations. \
-Reference real numbers, real competitors, real channels, and real news when available.
+The document should feel like something a thoughtful candidate would bring to a first conversation with \
+the hiring manager — grounded in data, honest about what you don't know, and designed to start a \
+strategic conversation rather than end one.
 
-Be direct and opinionated. Avoid filler. Every sentence should add signal."""
+Rules:
+- Reference specific data points when available (funding, competitors, channels, news). Never invent data.
+- Frame observations as hypotheses, not conclusions. Use "likely", "suggests", "I'd want to validate".
+- Show your reasoning. The hiring manager should see HOW you think, not just WHAT you think.
+- Be direct. No filler, no generic frameworks. Every sentence should demonstrate real research or sharp thinking.
+- If data is missing or unclear, name the gap explicitly — that's a strength, not a weakness."""
 
 
 def _build_user_prompt(context: dict) -> str:
     """Build the user prompt from the enriched context object."""
-    # Basic role info
     skills = "\n".join(f"- {s}" for s in context["key_skills_required"]) if context["key_skills_required"] else "not extracted"
     challenges = "\n".join(f"- {c}" for c in context["inferred_challenges"]) if context["inferred_challenges"] else "none inferred"
     notable = "\n".join(f"- {c}" for c in context["notable_claims"]) if context["notable_claims"] else "none found"
 
-    # Funding & financials
     investors_str = ", ".join(context.get("investors", [])) if context.get("investors") else "unknown"
     revenue_str = "\n".join(f"- {h}" for h in context.get("revenue_hints", [])) if context.get("revenue_hints") else "none found"
 
-    # Marketing
     channels_str = ", ".join(context.get("marketing_channels", [])) if context.get("marketing_channels") else "none detected"
     strategy_str = ", ".join(context.get("strategy_signals", [])) if context.get("strategy_signals") else "none detected"
 
-    # Competitors
     competitors_str = ", ".join(context.get("competitors", [])) if context.get("competitors") else "none identified"
 
-    # News
     news_str = context.get("recent_news", "none found") or "none found"
 
-    # Pricing details
     pricing = context.get("pricing_details", "")
     pricing_section = f"\n**Pricing Page Content:**\n{pricing[:1500]}" if pricing else ""
 
-    # Product / about details
     product = context.get("product_details", "")
     product_section = f"\n**Product/About Details:**\n{product[:1500]}" if product else ""
 
-    # Careers page
     careers = context.get("careers_page", "")
     careers_section = f"\n**Careers Page Signals:**\n{careers[:1000]}" if careers else ""
 
-    # Raw research for Claude to synthesize
     marketing_raw = context.get("marketing_raw", "")
     marketing_intel = f"\n**Marketing Intelligence (raw research):**\n{marketing_raw[:2500]}" if marketing_raw else ""
 
@@ -119,39 +116,45 @@ Known competitors: {competitors_str}
 
 ---
 
-Generate a case study document with the following sections:
+Generate an **open business case** document — a strategic discussion starter, NOT a finished plan. \
+The candidate will use this as a conversation piece in their interview. Structure it as follows:
 
 1. **Company Snapshot** (3-4 sentences)
-   - What they do, who they serve, where they appear to be in their growth trajectory
-   - Reference specific data points: funding, traffic, competitors, or claims where available
-   - One specific observation that shows you've actually looked at their business
+   - What they do, who they serve, where they are in their growth trajectory
+   - Reference specific data: funding, competitors, market position. Only cite data you actually have.
 
-2. **Growth Diagnosis** (4-6 bullet points)
-   - The most likely growth constraints this company is facing right now given stage, model, and role
-   - Be specific — not "they need more leads" but "their paid CAC is likely under pressure because X"
-   - Reference actual competitors, channels, or news when you can
+2. **What I Found** (the growth landscape)
+   - 4-6 bullet points of factual observations from the research
+   - Separate facts from inferences. Label each: "[Data]" for things sourced from research, "[Signal]" for reasonable inferences
+   - Include what's missing — "I couldn't find public data on X, which is itself a signal"
 
-3. **What the Role is Really About**
-   - Your interpretation of what problem this hire is meant to solve, reading between the lines of the JD
-   - What success looks like in 12 months if the hire goes well
+3. **How I Read This Role**
+   - 2-3 sentences interpreting what problem this hire is meant to solve
+   - Frame it as "My read is..." not "This role is about..."
+   - End with: "I'd want to validate this interpretation in our conversation."
 
-4. **My 90-Day Plan**
-   - Week 1-2: Listen and audit (specific things you'd audit based on the data above)
-   - Month 1: Quick wins (specific hypotheses you'd test first and why)
-   - Month 2-3: Structural bets (bigger initiatives you'd build toward)
+4. **Questions I'd Bring to the Table** (5-6 questions)
+   - Specific, strategic questions that show depth of thinking
+   - NOT generic ("What's your budget?") — but pointed ("Given your [X], I'd want to understand how you're currently thinking about [Y]")
+   - Each question should implicitly reveal a hypothesis or insight
 
-5. **One Specific Hypothesis**
-   - A single, concrete growth hypothesis you'd want to test in the first 60 days
-   - Format: "I believe that [action] will [result] because [reason]. I'd measure it by [metric]."
-   - Ground this in the actual company data — reference their channels, competitors, or product.
+5. **Initial Hypotheses** (3-4 hypotheses)
+   - Format: "**Hypothesis:** [statement]. **Why I think this:** [reasoning from data]. **How I'd test it:** [specific experiment or metric]. **What I'd need to know first:** [open question]."
+   - These should be genuinely testable, not safe platitudes
+   - At least one should be contrarian or non-obvious
 
-6. **Why Me** (optional, 2-3 sentences)
-   - [CANDIDATE TO FILL THIS IN]"""
+6. **90-Day Skeleton** (not a plan — a framework)
+   - Week 1-2: What I'd listen for and audit (specific to this company)
+   - Month 1: Likely first experiments (framed as "pending validation of [hypothesis]")
+   - Month 2-3: Directional bets I'd want to explore (explicitly conditional)
+   - End with: "This is a starting framework. The real plan emerges from the data and our conversations."
+
+Do NOT include a "Why Me" section — the entire document IS the demonstration of capability."""
 
 
 async def generate_case_study(context: dict) -> str:
-    """Call Claude API to generate the case study."""
-    console.print("\n[bold blue]Generating case study with Claude...[/bold blue]")
+    """Call Claude API to generate the business case."""
+    console.print("\n[bold blue]Generating business case with Claude...[/bold blue]")
 
     client = anthropic.AsyncAnthropic()
 
@@ -165,5 +168,5 @@ async def generate_case_study(context: dict) -> str:
     )
 
     text = message.content[0].text
-    console.print("[green]Case study generated successfully.[/green]")
+    console.print("[green]Business case generated successfully.[/green]")
     return text

@@ -286,19 +286,19 @@ async def research_all(company_name: str, domain: str) -> dict:
 
 def _extract_funding_stage(text: str) -> str:
     t = text.lower()
-    stages = [
-        ("ipo", "IPO/Public"),
-        ("series f", "Series F"),
-        ("series e", "Series E"),
-        ("series d", "Series D"),
-        ("series c", "Series C"),
-        ("series b", "Series B"),
-        ("series a", "Series A"),
-        ("seed", "Seed"),
-        ("pre-seed", "Pre-seed"),
+    # Order from most recent to earliest; use contextual patterns to avoid false matches
+    patterns = [
+        (r"(?:went public|ipo filing|public offering|listed on|nasdaq|nyse)", "IPO/Public"),
+        (r"series\s+f\b", "Series F"),
+        (r"series\s+e\b", "Series E"),
+        (r"series\s+d\b", "Series D"),
+        (r"series\s+c\b", "Series C"),
+        (r"series\s+b\b", "Series B"),
+        (r"series\s+a\b", "Series A"),
+        (r"(?:seed\s+(?:round|funding|stage|investment)|pre-seed)", "Seed"),
     ]
-    for keyword, label in stages:
-        if keyword in t:
+    for pattern, label in patterns:
+        if re.search(pattern, t):
             return label
     return "unknown"
 
