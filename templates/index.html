@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Study Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #1a1a1a;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #333;
+        }
+
+        label .optional {
+            color: #999;
+            font-weight: 400;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            background: #fff;
+            transition: border-color 0.15s;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #333;
+        }
+
+        textarea {
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a1a;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: opacity 0.15s;
+        }
+
+        button:hover { opacity: 0.85; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .loading .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid #ddd;
+            border-top-color: #333;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .result {
+            display: none;
+            margin-top: 32px;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .result-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            width: auto;
+            padding: 6px 14px;
+            font-size: 13px;
+            margin: 0;
+            background: #fff;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        .copy-btn:hover { background: #f5f5f5; }
+
+        .context-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .context-tag {
+            font-size: 12px;
+            padding: 3px 10px;
+            background: #e8e8e8;
+            border-radius: 12px;
+            color: #555;
+        }
+
+        .case-study {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 32px;
+        }
+
+        .case-study h1 { font-size: 20px; margin-top: 28px; margin-bottom: 8px; }
+        .case-study h2 { font-size: 17px; margin-top: 24px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .case-study h3 { font-size: 15px; margin-top: 20px; margin-bottom: 6px; }
+        .case-study p { margin-bottom: 12px; }
+        .case-study ul, .case-study ol { padding-left: 20px; margin-bottom: 12px; }
+        .case-study li { margin-bottom: 4px; }
+        .case-study strong { color: #111; }
+        .case-study blockquote { border-left: 3px solid #ddd; padding-left: 16px; color: #555; margin: 12px 0; }
+
+        .error-msg {
+            color: #c0392b;
+            text-align: center;
+            padding: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Case Study Generator</h1>
+        <p class="subtitle">Paste a job description and generate a tailored case study for your application.</p>
+
+        <form id="form">
+            <div class="row">
+                <div class="form-group">
+                    <label>Company Name</label>
+                    <input type="text" id="company_name" placeholder="Stripe" required>
+                </div>
+                <div class="form-group">
+                    <label>Domain <span class="optional">(optional)</span></label>
+                    <input type="text" id="domain" placeholder="stripe.com">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Job Title</label>
+                <input type="text" id="job_title" placeholder="Head of Growth Marketing">
+            </div>
+
+            <div class="form-group">
+                <label>Job Description</label>
+                <textarea id="jd_text" placeholder="Paste the full job description here..." required></textarea>
+            </div>
+
+            <button type="submit" id="submit-btn">Generate Case Study</button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Researching company and generating case study...</p>
+            <p style="font-size: 13px; margin-top: 8px;">This usually takes 30-60 seconds.</p>
+        </div>
+
+        <div class="result" id="result">
+            <div class="result-header">
+                <h2>Your Case Study</h2>
+                <button class="copy-btn" id="copy-btn">Copy Markdown</button>
+            </div>
+            <div class="context-bar" id="context-bar"></div>
+            <div class="case-study" id="case-study"></div>
+        </div>
+    </div>
+
+    <script>
+        let rawMarkdown = '';
+
+        document.getElementById('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const form = document.getElementById('form');
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const btn = document.getElementById('submit-btn');
+
+            form.style.display = 'none';
+            result.style.display = 'none';
+            loading.style.display = 'block';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        company_name: document.getElementById('company_name').value,
+                        domain: document.getElementById('domain').value,
+                        job_title: document.getElementById('job_title').value,
+                        jd_text: document.getElementById('jd_text').value,
+                    }),
+                });
+
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (!response.ok) {
+                    result.style.display = 'block';
+                    document.getElementById('case-study').innerHTML =
+                        '<p class="error-msg">' + (data.error || 'Something went wrong.') + '</p>';
+                    form.style.display = 'block';
+                    btn.disabled = false;
+                    return;
+                }
+
+                rawMarkdown = data.markdown;
+
+                // Render context tags
+                const ctx = data.context;
+                const bar = document.getElementById('context-bar');
+                bar.innerHTML = '';
+                const tags = [ctx.business_model, ctx.growth_stage, ctx.seniority, ctx.paid_ads_activity + ' ads'];
+                tags.forEach(t => {
+                    if (t && t !== 'unknown') {
+                        const span = document.createElement('span');
+                        span.className = 'context-tag';
+                        span.textContent = t;
+                        bar.appendChild(span);
+                    }
+                });
+
+                // Render markdown
+                document.getElementById('case-study').innerHTML = marked.parse(rawMarkdown);
+                result.style.display = 'block';
+
+            } catch (err) {
+                loading.style.display = 'none';
+                form.style.display = 'block';
+                btn.disabled = false;
+                alert('Request failed: ' + err.message);
+            }
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(rawMarkdown).then(() => {
+                const btn = document.getElementById('copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy Markdown'; }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>
