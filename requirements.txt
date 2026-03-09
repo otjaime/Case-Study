@@ -8,3 +8,5 @@ weasyprint>=62.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 jinja2>=3.1.0
+exa-py>=1.0.0
+firecrawl-py>=1.0.0

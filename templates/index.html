@@ -274,7 +274,18 @@
                 const ctx = data.context;
                 const bar = document.getElementById('context-bar');
                 bar.innerHTML = '';
-                const tags = [ctx.business_model, ctx.growth_stage, ctx.seniority, ctx.paid_ads_activity + ' ads'];
+                const tags = [
+                    ctx.business_model,
+                    ctx.growth_stage,
+                    ctx.seniority,
+                    ctx.funding_stage !== 'unknown' ? ctx.funding_stage : null,
+                ];
+                if (ctx.competitors && ctx.competitors.length) {
+                    tags.push('vs ' + ctx.competitors.join(', '));
+                }
+                if (ctx.marketing_channels && ctx.marketing_channels.length) {
+                    tags.push(ctx.marketing_channels.join(', '));
+                }
                 tags.forEach(t => {
                     if (t && t !== 'unknown') {
                         const span = document.createElement('span');

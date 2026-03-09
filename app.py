@@ -8,16 +8,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from scraper import (
-    scrape_company_website,
-    scrape_meta_ads,
-    scrape_similarweb,
-    scrape_linkedin_company,
-)
+from research import research_all
 from analyzer import build_context
 from generator import generate_case_study
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -49,7 +44,7 @@ async def generate(request: Request):
         if not domain:
             domain = company_name.lower().replace(" ", "") + ".com"
 
-        # Build job_data dict (same shape as scrape_job_posting returns)
+        # Build job_data dict
         job_data = {
             "url": "",
             "html": "",
@@ -60,15 +55,11 @@ async def generate(request: Request):
             "domain": domain,
         }
 
-        # Run company research scrapers in parallel
-        company_data, ads_data, traffic, linkedin_data = await asyncio.gather(
-            scrape_company_website(domain),
-            scrape_meta_ads(company_name),
-            scrape_similarweb(domain),
-            scrape_linkedin_company(company_name),
-        )
+        # Run enriched research pipeline
+        research_data = await research_all(company_name, domain)
 
-        context = build_context(job_data, company_data, ads_data, traffic, linkedin_data)
+        # Build context and generate
+        context = build_context(job_data, research_data)
         case_study = await generate_case_study(context)
 
         return JSONResponse({
@@ -79,7 +70,9 @@ async def generate(request: Request):
                 "seniority": context["seniority"],
                 "business_model": context["business_model"],
                 "growth_stage": context["growth_stage"],
-                "paid_ads_activity": context["paid_ads_activity"],
+                "funding_stage": context.get("funding_stage", "unknown"),
+                "competitors": context.get("competitors", [])[:3],
+                "marketing_channels": context.get("marketing_channels", [])[:5],
             },
         })
     except Exception as exc:

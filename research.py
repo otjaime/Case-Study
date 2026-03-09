@@ -1,0 +1,430 @@
+"""Deep company research using Exa (semantic search) and Firecrawl (website crawl)."""
+
+import asyncio
+import os
+import re
+from datetime import datetime, timedelta
+
+from rich.console import Console
+
+console = Console()
+
+# ---------------------------------------------------------------------------
+# Exa helpers
+# ---------------------------------------------------------------------------
+
+def _get_exa_client():
+    """Return an Exa client if API key is available, else None."""
+    api_key = os.environ.get("EXA_API_KEY")
+    if not api_key:
+        return None
+    from exa_py import Exa
+    return Exa(api_key)
+
+
+def _six_months_ago() -> str:
+    return (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def research_funding(company_name: str) -> dict:
+    """Search for funding rounds, valuation, and revenue signals."""
+    exa = _get_exa_client()
+    if not exa:
+        return {"stage": "unknown", "raised": "", "investors": [], "revenue_hints": [], "raw": ""}
+
+    console.print(f"  [dim]Exa: researching {company_name} funding...[/dim]")
+    try:
+        results = await asyncio.to_thread(
+            exa.search_and_contents,
+            f'"{company_name}" funding round valuation revenue series',
+            num_results=5,
+            text={"maxCharacters": 2000},
+            category="news",
+        )
+        texts = [r.text for r in results.results if r.text]
+        combined = "\n---\n".join(texts)
+        return {
+            "stage": _extract_funding_stage(combined),
+            "raised": _extract_raised(combined),
+            "investors": _extract_investors(combined),
+            "revenue_hints": _extract_revenue_hints(combined),
+            "raw": combined[:4000],
+        }
+    except Exception as e:
+        console.print(f"  [yellow]Exa funding search failed: {e}[/yellow]")
+        return {"stage": "unknown", "raised": "", "investors": [], "revenue_hints": [], "raw": ""}
+
+
+async def research_news(company_name: str) -> dict:
+    """Search for recent news, launches, partnerships, hires."""
+    exa = _get_exa_client()
+    if not exa:
+        return {"articles": [], "raw": ""}
+
+    console.print(f"  [dim]Exa: researching {company_name} news...[/dim]")
+    try:
+        results = await asyncio.to_thread(
+            exa.search_and_contents,
+            f'"{company_name}" launch OR partnership OR expansion OR hire OR acquisition',
+            num_results=8,
+            text={"maxCharacters": 1500},
+            start_published_date=_six_months_ago(),
+            category="news",
+        )
+        articles = []
+        for r in results.results:
+            articles.append({
+                "title": r.title or "",
+                "url": r.url or "",
+                "text": (r.text or "")[:1500],
+            })
+        raw = "\n---\n".join(a["text"] for a in articles if a["text"])
+        return {"articles": articles, "raw": raw[:6000]}
+    except Exception as e:
+        console.print(f"  [yellow]Exa news search failed: {e}[/yellow]")
+        return {"articles": [], "raw": ""}
+
+
+async def research_marketing_presence(company_name: str, domain: str) -> dict:
+    """Search for marketing channels, ad strategies, growth tactics."""
+    exa = _get_exa_client()
+    if not exa:
+        return {"channels_mentioned": [], "strategy_signals": [], "raw": ""}
+
+    console.print(f"  [dim]Exa: researching {company_name} marketing...[/dim]")
+    try:
+        results = await asyncio.to_thread(
+            exa.search_and_contents,
+            f'"{company_name}" OR "{domain}" marketing strategy ads channels growth SEO paid social',
+            num_results=5,
+            text={"maxCharacters": 2000},
+        )
+        texts = [r.text for r in results.results if r.text]
+        combined = "\n---\n".join(texts)
+        return {
+            "channels_mentioned": _extract_channels(combined),
+            "strategy_signals": _extract_strategy_signals(combined),
+            "raw": combined[:4000],
+        }
+    except Exception as e:
+        console.print(f"  [yellow]Exa marketing search failed: {e}[/yellow]")
+        return {"channels_mentioned": [], "strategy_signals": [], "raw": ""}
+
+
+async def research_competitors(company_name: str, domain: str) -> dict:
+    """Search for competitors and market positioning."""
+    exa = _get_exa_client()
+    if not exa:
+        return {"competitors": [], "positioning": "", "raw": ""}
+
+    console.print(f"  [dim]Exa: researching {company_name} competitors...[/dim]")
+    try:
+        results = await asyncio.to_thread(
+            exa.search_and_contents,
+            f'"{company_name}" vs competitors alternative comparison',
+            num_results=5,
+            text={"maxCharacters": 2000},
+        )
+        texts = [r.text for r in results.results if r.text]
+        combined = "\n---\n".join(texts)
+        return {
+            "competitors": _extract_competitors(combined, company_name),
+            "positioning": combined[:2000],
+            "raw": combined[:4000],
+        }
+    except Exception as e:
+        console.print(f"  [yellow]Exa competitor search failed: {e}[/yellow]")
+        return {"competitors": [], "positioning": "", "raw": ""}
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl helpers
+# ---------------------------------------------------------------------------
+
+def _get_firecrawl_client():
+    """Return a Firecrawl client if API key is available, else None."""
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
+    if not api_key:
+        return None
+    from firecrawl import Firecrawl
+    return Firecrawl(api_key=api_key)
+
+
+# Target paths to scrape on the company website
+_TARGET_PATHS = [
+    "/",
+    "/about",
+    "/pricing",
+    "/customers",
+    "/case-studies",
+    "/integrations",
+    "/careers",
+    "/blog",
+]
+
+
+async def crawl_website(domain: str) -> dict:
+    """Deep crawl of the company website using Firecrawl."""
+    fc = _get_firecrawl_client()
+    if not fc:
+        # Fallback: use basic scraper
+        from scraper import scrape_company_website
+        basic = await scrape_company_website(domain)
+        return {
+            "pages": {"homepage": basic.get("homepage_text", "")},
+            "all_text": basic.get("homepage_text", ""),
+            "notable_claims": basic.get("notable_claims", []),
+        }
+
+    console.print(f"  [dim]Firecrawl: mapping {domain}...[/dim]")
+    base_url = f"https://{domain}"
+
+    try:
+        # First, map the site to discover URLs
+        site_map = await asyncio.to_thread(fc.map, url=base_url, limit=50)
+
+        # site_map may be a list of URLs or an object with .links
+        if hasattr(site_map, "links"):
+            discovered_urls = site_map.links or []
+        elif isinstance(site_map, list):
+            discovered_urls = site_map
+        else:
+            discovered_urls = []
+
+        # Match discovered URLs against target paths
+        urls_to_scrape = set()
+        for target in _TARGET_PATHS:
+            full = base_url + target
+            # Check both exact and with trailing slash
+            for u in discovered_urls:
+                if isinstance(u, str) and (u.rstrip("/") == full.rstrip("/") or target == "/"):
+                    urls_to_scrape.add(u)
+                    break
+            else:
+                # If not found in map, try anyway
+                urls_to_scrape.add(full)
+
+        # Limit to reasonable number
+        urls_to_scrape = list(urls_to_scrape)[:10]
+
+        console.print(f"  [dim]Firecrawl: scraping {len(urls_to_scrape)} pages...[/dim]")
+
+        # Scrape each page
+        pages = {}
+        all_texts = []
+
+        async def _scrape_one(url: str):
+            try:
+                result = await asyncio.to_thread(fc.scrape, url, formats=["markdown"])
+                md = ""
+                if hasattr(result, "markdown"):
+                    md = result.markdown or ""
+                elif isinstance(result, dict):
+                    md = result.get("markdown", "")
+                return url, md[:5000]
+            except Exception:
+                return url, ""
+
+        tasks = [_scrape_one(u) for u in urls_to_scrape]
+        results = await asyncio.gather(*tasks)
+
+        for url, md in results:
+            # Determine page name from path
+            path = url.replace(base_url, "").strip("/") or "homepage"
+            pages[path] = md
+            if md:
+                all_texts.append(md)
+
+        all_text = "\n\n---\n\n".join(all_texts)
+
+        return {
+            "pages": pages,
+            "all_text": all_text[:15000],
+            "notable_claims": _extract_claims_from_text(all_text),
+        }
+
+    except Exception as e:
+        console.print(f"  [yellow]Firecrawl crawl failed: {e}[/yellow]")
+        # Fallback
+        from scraper import scrape_company_website
+        basic = await scrape_company_website(domain)
+        return {
+            "pages": {"homepage": basic.get("homepage_text", "")},
+            "all_text": basic.get("homepage_text", ""),
+            "notable_claims": basic.get("notable_claims", []),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+async def research_all(company_name: str, domain: str) -> dict:
+    """Run all research functions in parallel and consolidate results."""
+    console.print("\n[bold]Researching company (Exa + Firecrawl)...[/bold]\n")
+
+    funding, news, marketing, competitors, website = await asyncio.gather(
+        research_funding(company_name),
+        research_news(company_name),
+        research_marketing_presence(company_name, domain),
+        research_competitors(company_name, domain),
+        crawl_website(domain),
+    )
+
+    return {
+        "funding": funding,
+        "news": news,
+        "marketing": marketing,
+        "competitors": competitors,
+        "website": website,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Extraction helpers — simple regex/keyword extraction from raw text
+# ---------------------------------------------------------------------------
+
+def _extract_funding_stage(text: str) -> str:
+    t = text.lower()
+    stages = [
+        ("ipo", "IPO/Public"),
+        ("series f", "Series F"),
+        ("series e", "Series E"),
+        ("series d", "Series D"),
+        ("series c", "Series C"),
+        ("series b", "Series B"),
+        ("series a", "Series A"),
+        ("seed", "Seed"),
+        ("pre-seed", "Pre-seed"),
+    ]
+    for keyword, label in stages:
+        if keyword in t:
+            return label
+    return "unknown"
+
+
+def _extract_raised(text: str) -> str:
+    patterns = [
+        r"\$[\d,.]+\s*(?:billion|B)\b",
+        r"\$[\d,.]+\s*(?:million|M)\b",
+        r"raised\s+\$[\d,.]+[BM]?",
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m:
+            return m.group(0).strip()
+    return ""
+
+
+def _extract_investors(text: str) -> list[str]:
+    investor_keywords = [
+        "sequoia", "a16z", "andreessen", "accel", "benchmark", "greylock",
+        "lightspeed", "index ventures", "tiger global", "softbank", "ycombinator",
+        "y combinator", "kleiner perkins", "ggv", "general catalyst", "insight partners",
+        "coatue", "ribbit", "founders fund", "bessemer", "ivp",
+    ]
+    found = []
+    t = text.lower()
+    for inv in investor_keywords:
+        if inv in t:
+            found.append(inv.title())
+    return found[:5]
+
+
+def _extract_revenue_hints(text: str) -> list[str]:
+    patterns = [
+        r"\$[\d,.]+[BMK]?\s*(?:ARR|MRR|revenue|run rate)",
+        r"(?:ARR|MRR|revenue)\s*(?:of|reached|exceeded|surpassed)\s*\$[\d,.]+[BMK]?",
+        r"[\d,.]+\s*(?:million|billion)\s*(?:in\s+)?(?:ARR|MRR|revenue)",
+        r"(?:profitable|profitability|break.?even|cash.?flow positive)",
+    ]
+    hints = []
+    for p in patterns:
+        for m in re.finditer(p, text, re.IGNORECASE):
+            hints.append(m.group(0).strip())
+    return hints[:5]
+
+
+def _extract_channels(text: str) -> list[str]:
+    channel_map = {
+        "google ads": "Google Ads",
+        "facebook ads": "Facebook Ads",
+        "meta ads": "Meta Ads",
+        "instagram": "Instagram",
+        "linkedin ads": "LinkedIn Ads",
+        "tiktok": "TikTok",
+        "youtube": "YouTube",
+        "seo": "SEO",
+        "content marketing": "Content Marketing",
+        "email marketing": "Email Marketing",
+        "affiliate": "Affiliate",
+        "podcast": "Podcast",
+        "webinar": "Webinars",
+        "referral": "Referral Program",
+        "influencer": "Influencer Marketing",
+        "product.led": "Product-Led Growth",
+        "freemium": "Freemium",
+        "outbound": "Outbound Sales",
+    }
+    found = []
+    t = text.lower()
+    for keyword, label in channel_map.items():
+        if re.search(keyword, t):
+            found.append(label)
+    return found
+
+
+def _extract_strategy_signals(text: str) -> list[str]:
+    signals = []
+    t = text.lower()
+    signal_map = {
+        "product-led growth": "Product-led growth approach",
+        "sales-led": "Sales-led growth model",
+        "community": "Community-driven growth",
+        "virality": "Viral growth loops",
+        "word of mouth": "Word-of-mouth driven",
+        "enterprise sales": "Enterprise sales motion",
+        "self-serve": "Self-serve funnel",
+        "plg": "Product-led growth",
+        "bottoms.up": "Bottom-up adoption",
+        "land.and.expand": "Land-and-expand strategy",
+    }
+    for keyword, label in signal_map.items():
+        if re.search(keyword, t):
+            signals.append(label)
+    return signals
+
+
+def _extract_competitors(text: str, company_name: str) -> list[str]:
+    patterns = [
+        rf"{re.escape(company_name)}\s+(?:vs\.?|versus|compared to|or)\s+(\w[\w\s]*?)(?:\.|,|\n|$)",
+        r"competitors?\s+(?:include|like|such as)\s+([\w\s,]+?)(?:\.|$)",
+        r"alternatives?\s+(?:to|include|like)\s+([\w\s,]+?)(?:\.|$)",
+    ]
+    competitors = set()
+    for p in patterns:
+        for m in re.finditer(p, text, re.IGNORECASE):
+            names = m.group(1).split(",")
+            for n in names:
+                n = n.strip().strip(".")
+                if n and len(n) > 2 and n.lower() != company_name.lower():
+                    competitors.add(n)
+    return list(competitors)[:8]
+
+
+def _extract_claims_from_text(text: str) -> list[str]:
+    patterns = [
+        r"[\d,.]+[+]?\s*(?:customers?|companies|users?|teams?|organizations?)",
+        r"(?:Fortune|Inc\.?|Forbes)\s*\d+",
+        r"\$[\d,.]+[BMK]?\+?\s*(?:in\s+)?(?:revenue|ARR|MRR|saved|processed|managed)",
+        r"(?:trusted by|used by|loved by|chosen by)\s+[\d,.]+\+?\s*\w+",
+        r"\d+[+]?\s*(?:countries|integrations|languages)",
+        r"\d+[x%]\s+(?:faster|cheaper|more|growth|improvement|increase|reduction)",
+    ]
+    claims = set()
+    for p in patterns:
+        for m in re.finditer(p, text, re.IGNORECASE):
+            claim = m.group(0).strip()
+            if len(claim) > 8:
+                claims.add(claim)
+    return list(claims)[:15]

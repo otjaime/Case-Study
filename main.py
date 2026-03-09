@@ -8,13 +8,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 
-from scraper import (
-    scrape_job_posting,
-    scrape_company_website,
-    scrape_meta_ads,
-    scrape_similarweb,
-    scrape_linkedin_company,
-)
+from scraper import scrape_job_posting
+from research import research_all
 from analyzer import build_context
 from generator import generate_case_study
 from output import save_markdown, save_pdf
@@ -67,19 +62,12 @@ async def run(args: argparse.Namespace) -> None:
         console.print("[yellow]Could not detect job title from the posting.[/yellow]")
         job_data["job_title"] = input("Enter the job title: ").strip()
 
-    # 2. Scrape company website + public sources (parallel)
-    console.print("\n[bold]Gathering company data...[/bold]\n")
-
-    company_data, ads_data, traffic, linkedin_data = await asyncio.gather(
-        scrape_company_website(domain),
-        scrape_meta_ads(company_name),
-        scrape_similarweb(domain),
-        scrape_linkedin_company(company_name),
-    )
+    # 2. Research company (Exa + Firecrawl + fallback scrapers)
+    research_data = await research_all(company_name, domain)
 
     # 3. Build structured context
     console.print("\n[bold]Analyzing data...[/bold]\n")
-    context = build_context(job_data, company_data, ads_data, traffic, linkedin_data)
+    context = build_context(job_data, research_data)
 
     # Report what was collected
     console.print("[bold]Data collection summary:[/bold]")
@@ -88,8 +76,9 @@ async def run(args: argparse.Namespace) -> None:
     console.print(f"  Seniority:      {context['seniority']}")
     console.print(f"  Business model: {context['business_model']}")
     console.print(f"  Growth stage:   {context['growth_stage']}")
-    console.print(f"  Ads activity:   {context['paid_ads_activity']}")
-    console.print(f"  Traffic:        {context['estimated_traffic']}")
+    console.print(f"  Funding:        {context.get('funding_stage', 'unknown')} ({context.get('total_raised', 'n/a')})")
+    console.print(f"  Channels:       {', '.join(context.get('marketing_channels', [])) or 'none detected'}")
+    console.print(f"  Competitors:    {', '.join(context.get('competitors', [])) or 'none found'}")
     console.print(f"  Skills found:   {len(context['key_skills_required'])}")
     console.print(f"  Claims found:   {len(context['notable_claims'])}")
 
@@ -106,7 +95,7 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    load_dotenv()
+    load_dotenv(override=True)
     args = parse_args()
 
     try:

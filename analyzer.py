@@ -1,4 +1,4 @@
-"""Processes scraped data into a structured context object for Claude."""
+"""Processes scraped and researched data into a structured context object for Claude."""
 
 import re
 
@@ -27,20 +27,17 @@ def _detect_business_model(homepage_text: str, pricing_text: str) -> str:
         "DTC ecommerce": 0,
         "marketplace": 0,
     }
-    # B2B SaaS signals
     for term in ["saas", "enterprise", "teams", "per seat", "per user", "annual plan",
                   "api", "integration", "workflow", "dashboard", "b2b", "demo",
                   "book a demo", "request demo", "free trial", "pricing plans"]:
         if term in combined:
             scores["B2B SaaS"] += 1
 
-    # DTC ecommerce signals
     for term in ["shop", "cart", "add to cart", "free shipping", "checkout",
                   "buy now", "collection", "product", "returns", "dtc"]:
         if term in combined:
             scores["DTC ecommerce"] += 1
 
-    # Marketplace signals
     for term in ["marketplace", "buyers", "sellers", "listing", "two-sided",
                   "supply", "demand", "vendors", "merchants"]:
         if term in combined:
@@ -52,11 +49,26 @@ def _detect_business_model(homepage_text: str, pricing_text: str) -> str:
     return best
 
 
-def _detect_growth_stage(homepage_text: str, headcount: str, notable_claims: list[str]) -> str:
+def _detect_growth_stage(homepage_text: str, headcount: str, notable_claims: list[str],
+                          funding_stage: str = "unknown") -> str:
     """Infer growth stage from available signals."""
+    # If we have real funding data from Exa, use it directly
+    stage_map = {
+        "IPO/Public": "enterprise",
+        "Series F": "enterprise",
+        "Series E": "enterprise",
+        "Series D": "growth",
+        "Series C": "growth",
+        "Series B": "scaling",
+        "Series A": "scaling",
+        "Seed": "early",
+        "Pre-seed": "early",
+    }
+    if funding_stage in stage_map:
+        return stage_map[funding_stage]
+
     combined = f"{homepage_text} {' '.join(notable_claims)}".lower()
 
-    # Parse headcount
     emp_count = 0
     if headcount != "unknown":
         nums = re.findall(r"[\d,]+", headcount)
@@ -72,7 +84,6 @@ def _detect_growth_stage(homepage_text: str, headcount: str, notable_claims: lis
     if emp_count > 0:
         return "early"
 
-    # Fallback heuristics from text
     if any(w in combined for w in ["10,000", "50,000", "100,000", "million"]):
         return "growth"
     if any(w in combined for w in ["1,000", "5,000", "thousands"]):
@@ -99,7 +110,6 @@ def _extract_key_skills(job_text: str) -> list[str]:
                 skills.append(stripped)
             if len(skills) >= 12:
                 break
-            # End section on empty line after collecting some skills
             if not stripped and skills:
                 in_requirements = False
 
@@ -111,18 +121,20 @@ def _infer_challenges(context: dict) -> list[str]:
     challenges = []
     model = context.get("business_model", "unknown")
     stage = context.get("growth_stage", "unknown")
-    ads = context.get("paid_ads_activity", "none")
+    channels = context.get("marketing_channels", [])
+    competitors = context.get("competitors", [])
 
     if model == "B2B SaaS":
         challenges.append("Balancing self-serve growth with enterprise sales motion")
-        if ads == "none":
+        if not channels:
             challenges.append("No visible paid acquisition — may be over-indexed on organic/outbound")
         if stage in ("early", "scaling"):
             challenges.append("Proving repeatable acquisition channels before next funding milestone")
     elif model == "DTC ecommerce":
         challenges.append("Rising CAC on paid social and search channels")
-        if ads == "heavy":
-            challenges.append("Scale pressure on ad spend ROI — likely hitting diminishing returns")
+        paid_channels = [c for c in channels if "Ads" in c]
+        if len(paid_channels) >= 2:
+            challenges.append("Multi-channel paid dependency — diversification and efficiency pressure")
     elif model == "marketplace":
         challenges.append("Chicken-and-egg supply/demand balance")
 
@@ -131,8 +143,8 @@ def _infer_challenges(context: dict) -> list[str]:
     if stage == "growth":
         challenges.append("Maintaining growth rate while managing increasing complexity")
 
-    if ads == "heavy":
-        challenges.append("Heavy ad spend suggests dependency on paid channels — diversification needed")
+    if competitors:
+        challenges.append(f"Competitive pressure from {', '.join(competitors[:3])}")
 
     if not challenges:
         challenges.append("Growth strategy and channel prioritization")
@@ -140,22 +152,48 @@ def _infer_challenges(context: dict) -> list[str]:
     return challenges
 
 
-def build_context(
-    job_data: dict,
-    company_data: dict,
-    ads_data: dict,
-    traffic_estimate: str,
-    linkedin_data: dict,
-) -> dict:
-    """Build the structured context object from all scraped data."""
+def build_context(job_data: dict, research_data: dict) -> dict:
+    """Build the structured context object from job data and research results.
 
+    Args:
+        job_data: Dict with keys url, html, full_text, page_title, job_title, company_name, domain.
+        research_data: Dict from research.research_all() with keys:
+            funding, news, marketing, competitors, website.
+    """
     job_text = job_data.get("full_text", "")
     job_title = job_data.get("job_title", "")
     company_name = job_data.get("company_name", "")
-    homepage = company_data.get("homepage_text", "")
-    pricing = company_data.get("pricing_text", "")
-    headcount = linkedin_data.get("headcount", "unknown")
-    notable_claims = company_data.get("notable_claims", [])
+
+    # Extract sub-dicts
+    funding = research_data.get("funding", {})
+    news = research_data.get("news", {})
+    marketing = research_data.get("marketing", {})
+    comp = research_data.get("competitors", {})
+    website = research_data.get("website", {})
+
+    homepage = website.get("pages", {}).get("homepage", "")
+    pricing = website.get("pages", {}).get("pricing", "")
+    all_website_text = website.get("all_text", "")
+    notable_claims = website.get("notable_claims", [])
+
+    # Marketing signals
+    channels = marketing.get("channels_mentioned", [])
+    strategy_signals = marketing.get("strategy_signals", [])
+
+    # Competitors
+    competitors = comp.get("competitors", [])
+
+    # Funding
+    funding_stage = funding.get("stage", "unknown")
+    total_raised = funding.get("raised", "")
+    investors = funding.get("investors", [])
+    revenue_hints = funding.get("revenue_hints", [])
+
+    # News
+    articles = news.get("articles", [])
+    news_summary = "\n".join(
+        f"- {a['title']}" for a in articles[:6] if a.get("title")
+    )
 
     context = {
         "company_name": company_name,
@@ -163,13 +201,33 @@ def build_context(
         "seniority": _detect_seniority(job_title, job_text),
         "job_description": job_text[:6000],
         "key_skills_required": _extract_key_skills(job_text),
-        "company_description": homepage[:3000],
-        "business_model": _detect_business_model(homepage, pricing),
-        "growth_stage": _detect_growth_stage(homepage, headcount, notable_claims),
-        "paid_ads_activity": ads_data.get("volume", "none"),
-        "ad_themes": ads_data.get("themes", []),
-        "estimated_traffic": traffic_estimate,
+        # Company info — enriched
+        "company_description": all_website_text[:8000] if all_website_text else homepage[:3000],
+        "business_model": _detect_business_model(homepage or all_website_text, pricing),
+        "growth_stage": _detect_growth_stage(
+            homepage or all_website_text, "unknown", notable_claims, funding_stage
+        ),
         "notable_claims": notable_claims,
+        # Funding & financials
+        "funding_stage": funding_stage,
+        "total_raised": total_raised,
+        "investors": investors,
+        "revenue_hints": revenue_hints,
+        # Marketing & channels
+        "marketing_channels": channels,
+        "strategy_signals": strategy_signals,
+        "marketing_raw": marketing.get("raw", "")[:3000],
+        # Competitors
+        "competitors": competitors,
+        "competitive_raw": comp.get("positioning", "")[:2000],
+        # News
+        "recent_news": news_summary,
+        "news_raw": news.get("raw", "")[:3000],
+        # Website deep data
+        "product_details": website.get("pages", {}).get("about", "")[:2000],
+        "careers_page": website.get("pages", {}).get("careers", "")[:1500],
+        "pricing_details": pricing[:2000],
+        # Challenges (filled below)
         "inferred_challenges": [],
     }
 
