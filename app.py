@@ -10,6 +10,7 @@ from starlette.responses import StreamingResponse
 
 from research import research_all
 from analyzer import build_context
+from decomposer import decompose_jd
 from generator import generate_case_study, generate_case_study_streaming, score_case_quality
 
 load_dotenv(override=True)
@@ -55,8 +56,15 @@ async def generate(request: Request):
             "domain": domain,
         }
 
-        research_data = await research_all(company_name, domain)
-        context = build_context(job_data, research_data)
+        # Decompose JD into structured profile + requirements
+        company_profile, requirements_map = await decompose_jd(jd_text, company_name)
+
+        # Override job_title if decomposer extracted a better one
+        if company_profile.get("role_title") and company_profile["role_title"] != "Growth Role":
+            job_data["job_title"] = company_profile["role_title"]
+
+        research_data = await research_all(company_name, domain, company_profile)
+        context = build_context(job_data, research_data, company_profile, requirements_map)
         case_study, diagnosis = await generate_case_study(context)
 
         # Quality scoring (non-blocking best-effort)
@@ -72,8 +80,11 @@ async def generate(request: Request):
                 "business_model": context["business_model"],
                 "growth_stage": context["growth_stage"],
                 "funding_stage": context.get("funding_stage", "unknown"),
+                "industry": context.get("industry", "unknown"),
                 "competitors": context.get("competitors", [])[:3],
                 "marketing_channels": context.get("marketing_channels", [])[:5],
+                "tools_required": (requirements_map or {}).get("tools_required", [])[:6],
+                "coverage_gaps": len(context.get("coverage_gaps", [])),
             },
         })
     except Exception as exc:
@@ -120,13 +131,21 @@ async def generate_stream(request: Request):
 
     async def event_stream():
         try:
-            # Phase 1: Research
-            yield f"data: {json.dumps({'stage': 'researching'})}\n\n"
-            research_data = await research_all(company_name, domain)
+            # Phase 0: Decompose JD
+            yield f"data: {json.dumps({'stage': 'decomposing'})}\n\n"
+            company_profile, requirements_map = await decompose_jd(jd_text, company_name)
 
-            # Phase 2: Analysis
+            # Override job_title if decomposer extracted a better one
+            if company_profile.get("role_title") and company_profile["role_title"] != "Growth Role":
+                job_data["job_title"] = company_profile["role_title"]
+
+            # Phase 1: Research (guided by company profile)
+            yield f"data: {json.dumps({'stage': 'researching'})}\n\n"
+            research_data = await research_all(company_name, domain, company_profile)
+
+            # Phase 2: Analysis + coverage validation
             yield f"data: {json.dumps({'stage': 'analyzing'})}\n\n"
-            context = build_context(job_data, research_data)
+            context = build_context(job_data, research_data, company_profile, requirements_map)
 
             # Send context metadata
             ctx_meta = {
@@ -136,8 +155,11 @@ async def generate_stream(request: Request):
                 "business_model": context["business_model"],
                 "growth_stage": context["growth_stage"],
                 "funding_stage": context.get("funding_stage", "unknown"),
+                "industry": context.get("industry", "unknown"),
                 "competitors": context.get("competitors", [])[:3],
                 "marketing_channels": context.get("marketing_channels", [])[:5],
+                "tools_required": requirements_map.get("tools_required", [])[:6],
+                "coverage_gaps": len(context.get("coverage_gaps", [])),
             }
             yield f"data: {json.dumps({'context': ctx_meta})}\n\n"
 

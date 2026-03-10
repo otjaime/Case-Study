@@ -379,10 +379,11 @@ async def crawl_website(domain: str) -> dict:
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-async def research_all(company_name: str, domain: str) -> dict:
+async def research_all(company_name: str, domain: str, company_profile: dict | None = None) -> dict:
     """Run all research functions in parallel and consolidate results.
 
     Uses a domain-level file cache (TTL 7 days) to avoid redundant API calls.
+    If company_profile is provided, research queries are guided by industry/stage.
     """
     cached = _load_cache(domain)
     if cached:
@@ -390,13 +391,24 @@ async def research_all(company_name: str, domain: str) -> dict:
 
     console.print("\n[bold]Researching company (Exa + Firecrawl)...[/bold]\n")
 
+    industry = (company_profile or {}).get("industry", "")
+    stage = (company_profile or {}).get("company_stage", "")
+
+    # Build industry-specific news query
+    news_extra = ""
+    if industry:
+        news_extra = f" {industry}"
+
     funding, news, marketing, competitors, website = await asyncio.gather(
         research_funding(company_name),
-        research_news(company_name),
+        research_news(company_name + news_extra),
         research_marketing_presence(company_name, domain),
         research_competitors(company_name, domain),
         crawl_website(domain),
     )
+
+    # Additional industry/stage-specific research
+    industry_data = await _research_industry_specific(company_name, industry, stage)
 
     result = {
         "funding": funding,
@@ -404,10 +416,62 @@ async def research_all(company_name: str, domain: str) -> dict:
         "marketing": marketing,
         "competitors": competitors,
         "website": website,
+        "industry_intel": industry_data,
     }
 
     _save_cache(domain, result)
     return result
+
+
+async def _research_industry_specific(company_name: str, industry: str, stage: str) -> dict:
+    """Run additional searches tailored to the company's industry and stage."""
+    exa = _get_exa_client()
+    if not exa or not industry or industry == "unknown":
+        return {"raw": ""}
+
+    queries = []
+    ind = industry.lower()
+
+    # Industry-specific queries
+    if "fintech" in ind or "finance" in ind:
+        queries.append(f'"{company_name}" regulatory compliance fintech')
+    if "retail" in ind or "ecommerce" in ind or "cpg" in ind:
+        queries.append(f'"{company_name}" omnichannel digital transformation retail')
+    if "energy" in ind or "oil" in ind or "fuel" in ind:
+        queries.append(f'"{company_name}" digital ecosystem app loyalty')
+    if "edtech" in ind or "education" in ind:
+        queries.append(f'"{company_name}" student engagement platform growth')
+    if "saas" in ind or "software" in ind:
+        queries.append(f'"{company_name}" product-led growth enterprise expansion')
+
+    # Stage-specific queries
+    if stage == "corporate" or stage == "enterprise":
+        queries.append(f'"{company_name}" annual report strategy digital transformation')
+    elif stage == "scaleup":
+        queries.append(f'"{company_name}" growth metrics scaling challenges')
+    elif stage == "startup":
+        queries.append(f'"{company_name}" product market fit early traction')
+
+    if not queries:
+        return {"raw": ""}
+
+    console.print(f"  [dim]Exa: industry-specific research ({industry})...[/dim]")
+
+    all_texts = []
+    for query in queries[:2]:  # Max 2 extra queries to control cost
+        try:
+            results = await asyncio.to_thread(
+                exa.search_and_contents,
+                query,
+                num_results=3,
+                text={"maxCharacters": 1500},
+            )
+            texts = [r.text for r in results.results if r.text]
+            all_texts.extend(texts)
+        except Exception:
+            continue
+
+    return {"raw": "\n---\n".join(all_texts)[:4000]}
 
 
 # ---------------------------------------------------------------------------

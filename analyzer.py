@@ -188,13 +188,17 @@ def _infer_challenges_fallback(context: dict) -> list[str]:
     return challenges
 
 
-def build_context(job_data: dict, research_data: dict) -> dict:
-    """Build the structured context object from job data and research results.
+def build_context(job_data: dict, research_data: dict,
+                  company_profile: dict | None = None,
+                  requirements_map: dict | None = None) -> dict:
+    """Build the structured context object from job data, research, and decomposed JD.
 
     Args:
         job_data: Dict with keys url, html, full_text, page_title, job_title, company_name, domain.
         research_data: Dict from research.research_all() with keys:
-            funding, news, marketing, competitors, website.
+            funding, news, marketing, competitors, website, industry_intel.
+        company_profile: Structured company profile from decomposer (optional).
+        requirements_map: Structured requirements map from decomposer (optional).
     """
     job_text = job_data.get("full_text", "")
     job_title = job_data.get("job_title", "")
@@ -234,16 +238,25 @@ def build_context(job_data: dict, research_data: dict) -> dict:
     context = {
         "company_name": company_name,
         "job_title": job_title,
-        "seniority": _detect_seniority(job_title, job_text),
+        "seniority": (company_profile or {}).get("seniority") or _detect_seniority(job_title, job_text),
         "job_description": job_text[:6000],
         "key_skills_required": _extract_key_skills(job_text),
-        # Company info — enriched
+        # Company info — enriched (prefer decomposer over heuristics)
         "company_description": all_website_text[:8000] if all_website_text else homepage[:3000],
-        "business_model": _detect_business_model(homepage or all_website_text, pricing),
+        "business_model": (company_profile or {}).get("business_model") or _detect_business_model(homepage or all_website_text, pricing),
         "growth_stage": _detect_growth_stage(
             homepage or all_website_text, "unknown", notable_claims, funding_stage
         ),
         "notable_claims": notable_claims,
+        # Decomposer fields (company profile)
+        "industry": (company_profile or {}).get("industry", "unknown"),
+        "product_type": (company_profile or {}).get("product_type", "unknown"),
+        "company_stage": (company_profile or {}).get("company_stage", "unknown"),
+        "headcount_estimate": (company_profile or {}).get("headcount_estimate", "unknown"),
+        "market": (company_profile or {}).get("market", "unknown"),
+        "reports_to": (company_profile or {}).get("reports_to", "unknown"),
+        "team_size": (company_profile or {}).get("team_size", "unknown"),
+        "role_type": (company_profile or {}).get("role_type", "unknown"),
         # Funding & financials
         "funding_stage": funding_stage,
         "total_raised": total_raised,
@@ -260,14 +273,56 @@ def build_context(job_data: dict, research_data: dict) -> dict:
         # News
         "recent_news": news_summary,
         "news_raw": news.get("raw", "")[:3000],
+        # Industry-specific intel
+        "industry_intel": research_data.get("industry_intel", {}).get("raw", "")[:3000],
         # Website deep data
         "product_details": website.get("pages", {}).get("about", "")[:2000],
         "careers_page": website.get("pages", {}).get("careers", "")[:1500],
         "pricing_details": pricing[:2000],
-        # Challenges (filled below)
+        # Requirements map from decomposer
+        "requirements_map": requirements_map or {},
+        # Challenges and coverage (filled below)
         "inferred_challenges": [],
+        "coverage_gaps": [],
     }
 
     context["inferred_challenges"] = _infer_challenges(context, research_data)
 
+    # Validate coverage if requirements_map is available
+    if requirements_map:
+        context = validate_coverage(context, requirements_map)
+
+    return context
+
+
+def validate_coverage(context: dict, requirements_map: dict) -> dict:
+    """Ensure the context has enough signal to cover every tool, task, and KPI.
+
+    For each uncovered item, add it to coverage_gaps so the generator
+    can explicitly address it.
+    """
+    coverage_gaps = []
+    context_str = str(context).lower()
+
+    # Check tools
+    for tool in requirements_map.get("tools_required", []):
+        if tool.lower() not in context_str:
+            coverage_gaps.append(f"tool:{tool}")
+
+    # Check core tasks
+    for task in requirements_map.get("core_tasks", []):
+        if task.lower() not in context_str:
+            coverage_gaps.append(f"task:{task}")
+
+    # Emerging skills — always include explicitly since these are high-signal
+    for skill in requirements_map.get("emerging_skills", []):
+        coverage_gaps.append(f"emerging:{skill}")
+
+    # Check primary KPIs
+    for kpi in requirements_map.get("primary_kpis", []):
+        if kpi.lower() not in context_str:
+            coverage_gaps.append(f"kpi:{kpi}")
+
+    context["coverage_gaps"] = coverage_gaps
+    context["requirements_map"] = requirements_map
     return context

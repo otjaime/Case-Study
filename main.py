@@ -11,6 +11,7 @@ from rich.panel import Panel
 from scraper import scrape_job_posting
 from research import research_all
 from analyzer import build_context
+from decomposer import decompose_jd
 from generator import generate_case_study
 from output import save_markdown, save_pdf
 
@@ -62,12 +63,19 @@ async def run(args: argparse.Namespace) -> None:
         console.print("[yellow]Could not detect job title from the posting.[/yellow]")
         job_data["job_title"] = input("Enter the job title: ").strip()
 
-    # 2. Research company (Exa + Firecrawl + fallback scrapers)
-    research_data = await research_all(company_name, domain)
+    # 1b. Decompose JD into structured profile + requirements
+    company_profile, requirements_map = await decompose_jd(job_data["full_text"], company_name)
 
-    # 3. Build structured context
+    # Override job_title if decomposer extracted a better one
+    if company_profile.get("role_title") and company_profile["role_title"] != "Growth Role":
+        job_data["job_title"] = company_profile["role_title"]
+
+    # 2. Research company (Exa + Firecrawl + fallback scrapers)
+    research_data = await research_all(company_name, domain, company_profile)
+
+    # 3. Build structured context with coverage validation
     console.print("\n[bold]Analyzing data...[/bold]\n")
-    context = build_context(job_data, research_data)
+    context = build_context(job_data, research_data, company_profile, requirements_map)
 
     # Report what was collected
     console.print("[bold]Data collection summary:[/bold]")

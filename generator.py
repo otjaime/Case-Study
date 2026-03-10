@@ -55,6 +55,9 @@ truly understands the company's growth problems and can think strategically abou
 The business case should feel indistinguishable from a real one — the kind top companies send during \
 late-stage screening. It should be specific to this company's actual situation, not a generic exercise.
 
+The case MUST test every skill, tool, and objective listed in the requirements map.
+A case that doesn't test a required skill has failed its purpose.
+
 Rules:
 - Write in the voice of the hiring manager / company, not the candidate
 - Use real data from the research to ground the scenario (funding, competitors, channels, market position)
@@ -62,7 +65,8 @@ Rules:
 - Include enough context that a strong candidate can produce impressive work, but don't give away the answer
 - Calibrate difficulty and scope to the seniority level of the role
 - Make the deliverables concrete and specific — not vague "create a strategy"
-- Include realistic constraints (budget, team size, timeline) that force tradeoffs"""
+- Include realistic constraints (budget, team size, timeline) that force tradeoffs
+- Each task in "Your Task" must test a DIFFERENT skill from the requirements map"""
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +113,63 @@ def _build_context_block(context: dict) -> str:
     competitors_detail = context.get("competitors_detail", "")
     competitors_detail_section = f"\n**Competitor Deep Dive:**\n{competitors_detail}" if competitors_detail else ""
 
-    return f"""**Role:** {context['job_title']} at {context['company_name']}
-**Seniority:** {context['seniority']}
+    industry_intel = context.get("industry_intel", "")
+    industry_section = f"\n**Industry Intelligence:**\n{industry_intel[:2000]}" if industry_intel else ""
+
+    # Requirements map section (from decomposer)
+    req_map = context.get("requirements_map", {})
+    req_section = ""
+    if req_map and any(req_map.get(k) for k in ["tools_required", "core_tasks", "primary_kpis"]):
+        tools = ", ".join(req_map.get("tools_required", [])) or "none specified"
+        core_tasks = "\n".join(f"  - {t}" for t in req_map.get("core_tasks", [])) or "  - none extracted"
+        primary_kpis = ", ".join(req_map.get("primary_kpis", [])) or "none specified"
+        secondary_kpis = ", ".join(req_map.get("secondary_kpis", [])) or "none specified"
+        emerging = ", ".join(req_map.get("emerging_skills", [])) or "none detected"
+        methodologies = ", ".join(req_map.get("methodologies", [])) or "none specified"
+        leadership = ", ".join(req_map.get("leadership_signals", [])) or "none specified"
+
+        req_section = f"""
+
+---
+
+**WHAT THIS ROLE MUST DEMONSTRATE (from JD decomposition):**
+Required tools: {tools}
+Core tasks:
+{core_tasks}
+Primary KPIs: {primary_kpis}
+Secondary KPIs: {secondary_kpis}
+Emerging skills required: {emerging}
+Methodologies: {methodologies}
+Leadership signals: {leadership}"""
+
+    # Coverage gaps section
+    coverage_gaps = context.get("coverage_gaps", [])
+    coverage_section = ""
+    if coverage_gaps:
+        gaps_str = "\n".join(f"  - {g}" for g in coverage_gaps)
+        coverage_section = f"""
+
+---
+
+**COVERAGE REQUIREMENTS (items NOT found in research — case MUST address these):**
+{gaps_str}"""
+
+    return f"""**COMPANY PROFILE:**
+Company: {context['company_name']}
+Industry: {context.get('industry', 'unknown')}
+Stage: {context.get('company_stage', 'unknown')}
+Market: {context.get('market', 'unknown')}
+Product type: {context.get('product_type', 'unknown')}
+Headcount: {context.get('headcount_estimate', 'unknown')}
+
+**ROLE:**
+Role: {context['job_title']} reporting to {context.get('reports_to', 'unknown')}
+Seniority: {context['seniority']}
+Team: {context.get('team_size', 'unknown')} direct reports
+Role type: {context.get('role_type', 'unknown')}
+{req_section}
+
+---
 
 **Job Description:**
 {context['job_description']}
@@ -129,6 +188,7 @@ Growth stage: {context['growth_stage']}
 {pricing_section}
 {product_section}
 {careers_section}
+{industry_section}
 
 **Notable Public Claims:**
 {notable}
@@ -165,7 +225,8 @@ Known competitors: {competitors_str}
 ---
 
 **Pre-analysis — likely challenges:**
-{challenges}"""
+{challenges}
+{coverage_section}"""
 
 
 # ---------------------------------------------------------------------------
@@ -230,58 +291,67 @@ async def _run_case_construction(client: anthropic.AsyncAnthropic, context: dict
 
 Now generate a realistic take-home business case BUILT ON the diagnosed challenges above. Use the most severe and specific challenges as the foundation for the case.
 
+CRITICAL: If a COVERAGE REQUIREMENTS section is listed above, the case MUST include tasks that test those items. \
+Each task should test a different skill from the requirements map. \
+At least one task must explicitly require the listed tools. \
+At least one task must reference emerging skills.
+
 Structure:
 
 # [Company Name] — [Role Title] Business Case
 
 ## Background
 
-A 2-3 paragraph scenario brief written as the hiring manager. Set the stage: what the company does, \
-where you are in your growth journey, and what specific challenge you're facing that led to this hire. \
+1 paragraph describing the company's current situation. Include specific metrics where available. \
+Reference their stage, market position, and the digital/growth challenge they face. \
 Use real data points from the research but present them as internal context the company is sharing with the candidate. \
 Make it feel like a real internal brief — direct, specific, a bit raw.
 
 ## The Challenge
 
-A clear, specific problem statement. Not vague ("improve growth") but pointed: a specific constraint, \
-a specific metric under pressure, a specific strategic decision that needs to be made. \
+The specific problem the new hire inherits. Frame it as a real operational problem, \
+not a strategy exercise. Include data that makes the problem tangible. \
 This should be the kind of problem the person in this role would actually face in their first 90 days.
 
 ## Your Task
 
-3-4 concrete deliverables the candidate must produce. Each should be specific and actionable:
-- Not "create a strategy" but "propose a channel mix with estimated budget allocation across Q1"
-- Not "analyze the market" but "identify our 3 strongest positioning angles against [specific competitors] and explain why"
-- Include at least one deliverable that requires creative/strategic thinking (not just analysis)
-- Include at least one that requires quantitative reasoning (metrics, projections, budget)
+4-5 numbered deliverables the candidate must produce. Each task must test a DIFFERENT skill from the requirements map:
+- At least one task must explicitly require the listed tools (e.g. "Build a measurement framework using [specific tool]")
+- At least one task must reference emerging skills listed in the requirements
+- At least one deliverable that requires creative/strategic thinking (not just analysis)
+- At least one that requires quantitative reasoning (metrics, projections, budget)
+- Each task should be answerable in 300-500 words by the candidate
 
 ## Data & Context
 
-Present key data points as if the company is sharing them for the exercise. Include:
+Provide enough data for the candidate to build quantitative answers. Include:
 - Market/competitive data from the research
 - Channel performance hints (from marketing research)
 - Company metrics that can be inferred from public data
-- Anything from their website, pricing, or news that's relevant
+- Include metrics relevant to the primary KPIs from the requirements map
+- Include constraints that reflect the company stage reality
 - Frame gaps honestly: "We don't have reliable attribution data yet" or "Our current CRM doesn't track X"
 
 ## Evaluation Criteria
 
-4-5 bullet points describing what you're looking for in a strong response. \
+5 bullet points describing what you're looking for in a strong response. \
+Mirror the language of the job description requirements. \
+Include explicit criteria for emerging skills listed in the requirements map. \
 Calibrate to the seniority level. For senior roles, emphasize strategic thinking and prioritization. \
-For more junior roles, emphasize analytical rigor and creativity. \
-Include at least one criterion that reveals whether the candidate actually understands THIS company vs. giving a generic answer.
+For more junior roles, emphasize analytical rigor and creativity.
 
 ## Constraints
 
 Realistic constraints that force interesting tradeoffs:
 - Budget range (infer from company stage/size)
-- Team size (current marketing/growth team size, infer from careers page or stage)
+- Team size and reporting structure from the role profile
 - Timeline (first 90 days)
 - Any technical or organizational constraints implied by the JD or company stage
 
 ## Format & Submission
 
-Specify: expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
+Specify format appropriate for the seniority level. \
+Expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
 Keep it practical — what a real company would ask for.
 
 ---
@@ -358,58 +428,67 @@ async def generate_case_study_streaming(context: dict):
 
 Now generate a realistic take-home business case BUILT ON the diagnosed challenges above. Use the most severe and specific challenges as the foundation for the case.
 
+CRITICAL: If a COVERAGE REQUIREMENTS section is listed above, the case MUST include tasks that test those items. \
+Each task should test a different skill from the requirements map. \
+At least one task must explicitly require the listed tools. \
+At least one task must reference emerging skills.
+
 Structure:
 
 # [Company Name] — [Role Title] Business Case
 
 ## Background
 
-A 2-3 paragraph scenario brief written as the hiring manager. Set the stage: what the company does, \
-where you are in your growth journey, and what specific challenge you're facing that led to this hire. \
+1 paragraph describing the company's current situation. Include specific metrics where available. \
+Reference their stage, market position, and the digital/growth challenge they face. \
 Use real data points from the research but present them as internal context the company is sharing with the candidate. \
 Make it feel like a real internal brief — direct, specific, a bit raw.
 
 ## The Challenge
 
-A clear, specific problem statement. Not vague ("improve growth") but pointed: a specific constraint, \
-a specific metric under pressure, a specific strategic decision that needs to be made. \
+The specific problem the new hire inherits. Frame it as a real operational problem, \
+not a strategy exercise. Include data that makes the problem tangible. \
 This should be the kind of problem the person in this role would actually face in their first 90 days.
 
 ## Your Task
 
-3-4 concrete deliverables the candidate must produce. Each should be specific and actionable:
-- Not "create a strategy" but "propose a channel mix with estimated budget allocation across Q1"
-- Not "analyze the market" but "identify our 3 strongest positioning angles against [specific competitors] and explain why"
-- Include at least one deliverable that requires creative/strategic thinking (not just analysis)
-- Include at least one that requires quantitative reasoning (metrics, projections, budget)
+4-5 numbered deliverables the candidate must produce. Each task must test a DIFFERENT skill from the requirements map:
+- At least one task must explicitly require the listed tools (e.g. "Build a measurement framework using [specific tool]")
+- At least one task must reference emerging skills listed in the requirements
+- At least one deliverable that requires creative/strategic thinking (not just analysis)
+- At least one that requires quantitative reasoning (metrics, projections, budget)
+- Each task should be answerable in 300-500 words by the candidate
 
 ## Data & Context
 
-Present key data points as if the company is sharing them for the exercise. Include:
+Provide enough data for the candidate to build quantitative answers. Include:
 - Market/competitive data from the research
 - Channel performance hints (from marketing research)
 - Company metrics that can be inferred from public data
-- Anything from their website, pricing, or news that's relevant
+- Include metrics relevant to the primary KPIs from the requirements map
+- Include constraints that reflect the company stage reality
 - Frame gaps honestly: "We don't have reliable attribution data yet" or "Our current CRM doesn't track X"
 
 ## Evaluation Criteria
 
-4-5 bullet points describing what you're looking for in a strong response. \
+5 bullet points describing what you're looking for in a strong response. \
+Mirror the language of the job description requirements. \
+Include explicit criteria for emerging skills listed in the requirements map. \
 Calibrate to the seniority level. For senior roles, emphasize strategic thinking and prioritization. \
-For more junior roles, emphasize analytical rigor and creativity. \
-Include at least one criterion that reveals whether the candidate actually understands THIS company vs. giving a generic answer.
+For more junior roles, emphasize analytical rigor and creativity.
 
 ## Constraints
 
 Realistic constraints that force interesting tradeoffs:
 - Budget range (infer from company stage/size)
-- Team size (current marketing/growth team size, infer from careers page or stage)
+- Team size and reporting structure from the role profile
 - Timeline (first 90 days)
 - Any technical or organizational constraints implied by the JD or company stage
 
 ## Format & Submission
 
-Specify: expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
+Specify format appropriate for the seniority level. \
+Expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
 Keep it practical — what a real company would ask for.
 
 ---

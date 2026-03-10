@@ -270,6 +270,7 @@
         let rawMarkdown = '';
 
         const STATUS_MESSAGES = {
+            decomposing: 'Analyzing job description...',
             researching: 'Researching company...',
             analyzing: 'Analyzing data...',
             diagnosis: 'Diagnosing business challenges...',
@@ -405,7 +406,9 @@
 
                         if (parsed.stage) {
                             statusEl.textContent = STATUS_MESSAGES[parsed.stage] || parsed.stage;
-                            if (parsed.stage === 'researching') {
+                            if (parsed.stage === 'decomposing') {
+                                detailEl.textContent = 'Extracting company profile and requirements map...';
+                            } else if (parsed.stage === 'researching') {
                                 detailEl.textContent = 'Querying Exa + Firecrawl APIs...';
                             } else if (parsed.stage === 'analyzing') {
                                 detailEl.textContent = 'Building context and inferring challenges...';
