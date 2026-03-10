@@ -240,7 +240,7 @@ async def _run_diagnosis(client: anthropic.AsyncAnthropic, context: dict) -> str
     context_block = _build_context_block(context)
 
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-opus-4-20250115",
         max_tokens=1500,
         system=DIAGNOSIS_SYSTEM_PROMPT,
         messages=[{
@@ -274,7 +274,7 @@ async def _run_case_construction(client: anthropic.AsyncAnthropic, context: dict
     context_block = _build_context_block(context)
 
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-opus-4-20250115",
         max_tokens=6000,
         system=CASE_SYSTEM_PROMPT,
         messages=[{
@@ -411,7 +411,7 @@ async def generate_case_study_streaming(context: dict):
     context_block = _build_context_block(context)
 
     async with client.messages.stream(
-        model="claude-sonnet-4-20250514",
+        model="claude-opus-4-20250115",
         max_tokens=6000,
         system=CASE_SYSTEM_PROMPT,
         messages=[{
