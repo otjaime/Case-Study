@@ -84,17 +84,40 @@ REQUIRED_TASK_TYPES = {
 }
 
 
-def _get_task_guidance(business_model: str) -> str:
+FINANCIAL_MODEL_TASKS = [
+    "operating plan", "financial model", "p&l", "revenue model",
+    "budget allocation", "aop", "contribution margin", "unit economics",
+]
+
+
+def _requires_table_format(task_text: str) -> bool:
+    return any(term in task_text.lower() for term in FINANCIAL_MODEL_TASKS)
+
+
+def _get_task_guidance(business_model: str, context: dict | None = None) -> str:
     required_types = REQUIRED_TASK_TYPES.get(business_model, [])
-    if not required_types:
-        return ""
-    types_str = "\n".join(f"  - {t}" for t in required_types)
-    return f"""
+    parts = []
+
+    if required_types:
+        types_str = "\n".join(f"  - {t}" for t in required_types)
+        parts.append(f"""
 REQUIRED TASK TYPES FOR THIS BUSINESS MODEL ({business_model}):
 The "Your Task" section MUST include tasks covering:
 {types_str}
-These are non-negotiable for this business model context.
-"""
+These are non-negotiable for this business model context.""")
+
+    # Check if any required tasks or core tasks involve financial modeling
+    all_tasks = list(required_types)
+    if context:
+        req_map = context.get("requirements_map", {})
+        all_tasks.extend(req_map.get("core_tasks", []))
+    if any(_requires_table_format(t) for t in all_tasks):
+        parts.append("""
+FORMATTING REQUIREMENT: Any task involving financial modeling, P&L, or budget allocation \
+MUST include a structured table with explicit columns (channel, metric, value, assumption). \
+Do not describe the model in prose — show the structure.""")
+
+    return "\n".join(parts) if parts else ""
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +352,7 @@ async def _run_case_construction(client: anthropic.AsyncAnthropic, context: dict
     console.print("  [dim]Stage 2: Constructing business case...[/dim]")
 
     context_block = _build_context_block(context)
-    task_guidance = _get_task_guidance(context.get("business_model", ""))
+    task_guidance = _get_task_guidance(context.get("business_model", ""), context)
 
     message = await client.messages.create(
         model="claude-opus-4-6",
@@ -515,7 +538,7 @@ async def generate_case_study_streaming(context: dict):
     yield {"stage": "generating"}
 
     context_block = _build_context_block(context)
-    task_guidance = _get_task_guidance(context.get("business_model", ""))
+    task_guidance = _get_task_guidance(context.get("business_model", ""), context)
 
     async with client.messages.stream(
         model="claude-opus-4-6",
