@@ -27,8 +27,19 @@ Relevant channels: supply-side direct sales, demand-side paid, community, SEO.
     """,
     "fintech": """
 Key metrics to reference: MAU, transaction volume, activation rate, card spend, CAC vs LTV.
-Common challenges: regulatory, trust building, activation funnel, cross-sell.
-Relevant channels: referral, employer partnerships, content, paid.
+Common challenges: regulatory constraints, trust building, activation funnel, cross-sell.
+Relevant channels: referral programs, employer partnerships, content, paid social.
+    """,
+    "institutional B2B": """
+Key metrics to reference: qualified pipeline, ACV, deal cycle length, win rate, ARR, NRR.
+Common challenges: founder-dependent sales, long trust-building cycles, competitive incumbents,
+  no brand awareness in target market, pipeline consistency.
+Relevant channels: prime broker relationships, fund administrator networks, allocator introductions,
+  conference-based pipeline, community-led content (NOT paid digital, NOT SEO).
+Buyer dynamics: buying committees (PM/CIO champion + COO/CFO budget holder),
+  3-9 month deal cycles, relationship-first — cold outbound rarely works.
+Anti-patterns to call out: generic AI messaging fails with CIOs, booth sponsorships ROI-negative,
+  standard B2B SaaS playbooks don't apply.
     """,
 }
 
@@ -38,6 +49,52 @@ def _get_model_context(business_model: str) -> str:
         if key.lower() in business_model.lower():
             return BUSINESS_MODEL_CONTEXT[key]
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Required task types per business model (Fix 4)
+# ---------------------------------------------------------------------------
+
+REQUIRED_TASK_TYPES = {
+    "institutional B2B": [
+        "channel-market fit analysis (why standard B2B SaaS channels don't work here)",
+        "positioning framework vs established incumbents",
+        "90-day pipeline generation plan from near-zero",
+    ],
+    "DTC ecommerce": [
+        "attribution architecture (multi-touch, cross-channel)",
+        "retention funnel redesign (activation + repeat purchase)",
+        "paid channel mix and creative strategy",
+    ],
+    "B2B SaaS": [
+        "ICP definition and segmentation",
+        "pipeline generation and channel prioritization",
+        "PLG vs SLG motion analysis",
+    ],
+    "fintech": [
+        "activation funnel optimization",
+        "trust and regulatory positioning",
+        "referral and partnership channel design",
+    ],
+    "marketplace": [
+        "supply-side vs demand-side acquisition strategy",
+        "liquidity and cold-start problem",
+        "unit economics by market/geography",
+    ],
+}
+
+
+def _get_task_guidance(business_model: str) -> str:
+    required_types = REQUIRED_TASK_TYPES.get(business_model, [])
+    if not required_types:
+        return ""
+    types_str = "\n".join(f"  - {t}" for t in required_types)
+    return f"""
+REQUIRED TASK TYPES FOR THIS BUSINESS MODEL ({business_model}):
+The "Your Task" section MUST include tasks covering:
+{types_str}
+These are non-negotiable for this business model context.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +329,7 @@ async def _run_case_construction(client: anthropic.AsyncAnthropic, context: dict
     console.print("  [dim]Stage 2: Constructing business case...[/dim]")
 
     context_block = _build_context_block(context)
+    task_guidance = _get_task_guidance(context.get("business_model", ""))
 
     message = await client.messages.create(
         model="claude-opus-4-6",
@@ -295,7 +353,7 @@ CRITICAL: If a COVERAGE REQUIREMENTS section is listed above, the case MUST incl
 Each task should test a different skill from the requirements map. \
 At least one task must explicitly require the listed tools. \
 At least one task must reference emerging skills.
-
+{task_guidance}
 Structure:
 
 # [Company Name] — [Role Title] Business Case
@@ -366,6 +424,41 @@ The candidate should have to do real strategic work to produce a strong response
 
 
 # ---------------------------------------------------------------------------
+# Coverage patching
+# ---------------------------------------------------------------------------
+
+async def _patch_coverage(
+    client: anthropic.AsyncAnthropic,
+    context: dict,
+    case_text: str,
+    missing_items: list[str],
+) -> str:
+    """Patch a generated case to explicitly cover missing tools/skills/KPIs."""
+    console.print("  [dim]Patching coverage gaps...[/dim]")
+    gaps_str = "\n".join(f"- {g}" for g in missing_items)
+    message = await client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=2000,
+        messages=[{
+            "role": "user",
+            "content": f"""The following business case is missing explicit coverage of required items.
+Revise the relevant tasks in "Your Task" and "Evaluation Criteria" sections to explicitly
+require and evaluate these items. Do not change the Background or Challenge sections.
+Keep the same overall structure and length.
+
+MISSING ITEMS (must appear explicitly in the revised case):
+{gaps_str}
+
+ORIGINAL CASE:
+{case_text}
+
+Return ONLY the revised case, no preamble."""
+        }],
+    )
+    return message.content[0].text
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -383,6 +476,19 @@ async def generate_case_study(context: dict) -> tuple[str, str]:
 
     # Stage 2: Case construction built on top of diagnosis
     case_text = await _run_case_construction(client, context, diagnosis)
+
+    # Validate coverage against generated case, not input context
+    coverage_gaps = context.get("coverage_gaps", [])
+    if coverage_gaps:
+        missing = []
+        for gap in coverage_gaps:
+            item = gap.split(":", 1)[1].lower() if ":" in gap else gap.lower()
+            if item not in case_text.lower():
+                missing.append(gap)
+
+        if missing:
+            console.print(f"[yellow]Coverage gaps in generated case: {missing}[/yellow]")
+            case_text = await _patch_coverage(client, context, case_text, missing)
 
     console.print("[green]Business case generated successfully.[/green]")
     return case_text, diagnosis
@@ -409,6 +515,7 @@ async def generate_case_study_streaming(context: dict):
     yield {"stage": "generating"}
 
     context_block = _build_context_block(context)
+    task_guidance = _get_task_guidance(context.get("business_model", ""))
 
     async with client.messages.stream(
         model="claude-opus-4-6",
@@ -432,7 +539,7 @@ CRITICAL: If a COVERAGE REQUIREMENTS section is listed above, the case MUST incl
 Each task should test a different skill from the requirements map. \
 At least one task must explicitly require the listed tools. \
 At least one task must reference emerging skills.
-
+{task_guidance}
 Structure:
 
 # [Company Name] — [Role Title] Business Case

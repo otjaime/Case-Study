@@ -28,22 +28,43 @@ def _detect_business_model(homepage_text: str, pricing_text: str) -> str:
         "B2B SaaS": 0,
         "DTC ecommerce": 0,
         "marketplace": 0,
+        "fintech": 0,
+        "institutional B2B": 0,
     }
-    for term in ["saas", "enterprise", "teams", "per seat", "per user", "annual plan",
-                  "api", "integration", "workflow", "dashboard", "b2b", "demo",
-                  "book a demo", "request demo", "free trial", "pricing plans"]:
+
+    # B2B SaaS signals
+    for term in ["saas", "enterprise", "per seat", "per user", "annual plan",
+                  "api", "integration", "workflow", "dashboard", "b2b",
+                  "demo", "book a demo", "free trial", "pricing plans"]:
         if term in combined:
             scores["B2B SaaS"] += 1
 
+    # DTC ecommerce signals
     for term in ["shop", "cart", "add to cart", "free shipping", "checkout",
                   "buy now", "collection", "product", "returns", "dtc"]:
         if term in combined:
             scores["DTC ecommerce"] += 1
 
+    # Marketplace signals
     for term in ["marketplace", "buyers", "sellers", "listing", "two-sided",
                   "supply", "demand", "vendors", "merchants"]:
         if term in combined:
             scores["marketplace"] += 1
+
+    # Fintech signals
+    for term in ["fintech", "payments", "neobank", "card", "lending",
+                  "wallet", "transaction", "kyc", "banking", "remittance",
+                  "credit", "debit", "open banking"]:
+        if term in combined:
+            scores["fintech"] += 1
+
+    # Institutional B2B signals
+    for term in ["hedge fund", "asset manager", "institutional", "portfolio analytics",
+                  "risk analytics", "fund admin", "prime broker", "allocator",
+                  "investment management", "fund of funds", "family office",
+                  "aum", "nav", "attribution", "factor model"]:
+        if term in combined:
+            scores["institutional B2B"] += 1
 
     best = max(scores, key=scores.get)
     if scores[best] == 0:
