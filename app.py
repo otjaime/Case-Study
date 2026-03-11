@@ -12,6 +12,7 @@ from research import research_all
 from analyzer import build_context
 from decomposer import decompose_jd
 from generator import generate_case_study, generate_case_study_streaming, score_case_quality
+from applier import generate_application_streaming
 
 load_dotenv(override=True)
 
@@ -177,6 +178,45 @@ async def generate_stream(request: Request):
             except Exception:
                 pass
 
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/apply-stream")
+async def apply_stream(request: Request):
+    """Streaming endpoint to generate a personalized application document."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid request body."}, status_code=400)
+
+    case_study = body.get("case_study", "").strip()
+    jd_text = body.get("jd_text", "").strip()
+    company_name = body.get("company_name", "").strip()
+    job_title = body.get("job_title", "").strip()
+    cv_text = body.get("cv_text", "").strip()
+    experiences = body.get("experiences", "").strip()
+
+    if not case_study or not cv_text or not experiences:
+        return JSONResponse(
+            {"error": "Case study, CV, and experiences are required."},
+            status_code=400,
+        )
+
+    async def event_stream():
+        try:
+            async for event in generate_application_streaming(
+                case_study, jd_text, company_name, job_title, cv_text, experiences
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 

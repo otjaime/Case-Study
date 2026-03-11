@@ -216,6 +216,68 @@
         .quality-bar .score.high { color: #27ae60; }
         .quality-bar .score.mid { color: #f39c12; }
         .quality-bar .score.low { color: #c0392b; }
+
+        /* Apply section */
+        .apply-section {
+            display: none;
+            margin-top: 32px;
+            padding: 24px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .apply-section h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .apply-section .apply-subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 16px;
+        }
+
+        .apply-section textarea {
+            min-height: 120px;
+        }
+
+        .apply-btn {
+            background: #1a6b3a;
+        }
+
+        .apply-result {
+            display: none;
+            margin-top: 32px;
+        }
+
+        .apply-result .case-study {
+            border-color: #b8d4c8;
+        }
+
+        .apply-loading {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .apply-loading .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid #ddd;
+            border-top-color: #1a6b3a;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 32px 0;
+        }
     </style>
 </head>
 <body>
@@ -264,10 +326,50 @@
             <div class="case-study" id="case-study"></div>
             <div class="quality-bar" id="quality-bar" style="display:none;"></div>
         </div>
+
+        <!-- Apply section: appears after case generation -->
+        <div class="apply-section" id="apply-section">
+            <h2>Apply with this case</h2>
+            <p class="apply-subtitle">Turn this case into a proactive application document. Add 2-3 relevant experiences from your background.</p>
+
+            <form id="apply-form">
+                <div class="form-group">
+                    <label>Your CV / Resume</label>
+                    <textarea id="cv_text" placeholder="Paste your CV or resume here. This is used to extract your name, background, and expertise to write in your voice." style="min-height:160px;"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Your Relevant Experiences</label>
+                    <textarea id="experiences" placeholder="2-3 concrete experiences that are analogous to the challenges in the case. Example:&#10;&#10;- Built the referral system from scratch, reaching 18% of new orders in 4 months&#10;- Reduced CAC by 35% by restructuring audience segmentation in Meta Ads&#10;- Designed the unit economics model that justified a 2x increase in paid budget"></textarea>
+                </div>
+
+                <button type="submit" class="apply-btn" id="apply-btn">Generate Application Document</button>
+            </form>
+        </div>
+
+        <div class="apply-loading" id="apply-loading">
+            <div class="spinner"></div>
+            <p class="loading-status">Generating application document...</p>
+            <p class="loading-detail" style="font-size:13px;color:#999;">Writing in your voice with your experiences...</p>
+            <p class="word-count" id="apply-word-count"></p>
+        </div>
+
+        <div class="apply-result" id="apply-result">
+            <div class="result-header">
+                <h2>Your Application Document</h2>
+                <button class="copy-btn" id="copy-apply-btn">Copy Markdown</button>
+            </div>
+            <div class="case-study" id="apply-output"></div>
+        </div>
     </div>
 
     <script>
         let rawMarkdown = '';
+        let applyMarkdown = '';
+        // Store form values for reuse in apply step
+        let storedCompanyName = '';
+        let storedJobTitle = '';
+        let storedJdText = '';
 
         const STATUS_MESSAGES = {
             decomposing: 'Analyzing job description...',
@@ -352,6 +454,11 @@
                 job_title: document.getElementById('job_title').value,
                 jd_text: document.getElementById('jd_text').value,
             });
+
+            // Store for apply step
+            storedCompanyName = document.getElementById('company_name').value;
+            storedJobTitle = document.getElementById('job_title').value;
+            storedJdText = document.getElementById('jd_text').value;
 
             try {
                 const response = await fetch('/generate-stream', {
@@ -450,6 +557,8 @@
                     wordCountEl.textContent = countWords(rawMarkdown) + ' words — done';
                 }
                 result.style.display = 'block';
+                // Show apply section
+                document.getElementById('apply-section').style.display = 'block';
 
             } catch (err) {
                 loading.style.display = 'none';
@@ -462,6 +571,131 @@
         document.getElementById('copy-btn').addEventListener('click', () => {
             navigator.clipboard.writeText(rawMarkdown).then(() => {
                 const btn = document.getElementById('copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy Markdown'; }, 2000);
+            });
+        });
+
+        // --- Apply flow ---
+
+        document.getElementById('apply-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const experiences = document.getElementById('experiences').value.trim();
+            const cvText = document.getElementById('cv_text').value.trim();
+            if (!cvText) { alert('Paste your CV or resume.'); return; }
+            if (!experiences) { alert('Add at least one relevant experience.'); return; }
+
+            const applySection = document.getElementById('apply-section');
+            const applyLoading = document.getElementById('apply-loading');
+            const applyResult = document.getElementById('apply-result');
+            const applyOutput = document.getElementById('apply-output');
+            const applyWordCount = document.getElementById('apply-word-count');
+            const applyBtn = document.getElementById('apply-btn');
+
+            applyBtn.disabled = true;
+            applySection.style.display = 'none';
+            applyResult.style.display = 'none';
+            applyLoading.style.display = 'block';
+            applyMarkdown = '';
+            applyOutput.innerHTML = '';
+            applyWordCount.textContent = '';
+
+            const payload = JSON.stringify({
+                case_study: rawMarkdown,
+                jd_text: storedJdText,
+                company_name: storedCompanyName,
+                job_title: storedJobTitle,
+                cv_text: cvText,
+                experiences: experiences,
+            });
+
+            try {
+                const response = await fetch('/apply-stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload,
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Request failed');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streaming = false;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const data = line.slice(6);
+
+                        if (data === '[DONE]') {
+                            applyLoading.style.display = 'none';
+                            if (applyMarkdown) {
+                                applyOutput.innerHTML = marked.parse(applyMarkdown);
+                            }
+                            applyResult.style.display = 'block';
+                            continue;
+                        }
+
+                        let parsed;
+                        try { parsed = JSON.parse(data); } catch { continue; }
+
+                        if (parsed.error) {
+                            applyLoading.style.display = 'none';
+                            applyResult.style.display = 'block';
+                            applyOutput.innerHTML = '<p class="error-msg">' + parsed.error + '</p>';
+                            applySection.style.display = 'block';
+                            applyBtn.disabled = false;
+                            return;
+                        }
+
+                        if (parsed.stage === 'applying') {
+                            applyLoading.style.display = 'none';
+                            applyResult.style.display = 'block';
+                            streaming = true;
+                        }
+
+                        if (parsed.chunk) {
+                            applyMarkdown += parsed.chunk;
+                            if (streaming) {
+                                applyOutput.innerHTML = marked.parse(applyMarkdown);
+                                applyWordCount.textContent = countWords(applyMarkdown) + ' words';
+                                window.scrollTo(0, document.body.scrollHeight);
+                            }
+                        }
+                    }
+                }
+
+                // Final render
+                if (applyMarkdown) {
+                    applyOutput.innerHTML = marked.parse(applyMarkdown);
+                    applyWordCount.textContent = countWords(applyMarkdown) + ' words — done';
+                }
+                applyResult.style.display = 'block';
+                applyBtn.disabled = false;
+
+            } catch (err) {
+                applyLoading.style.display = 'none';
+                applySection.style.display = 'block';
+                applyBtn.disabled = false;
+                alert('Apply request failed: ' + err.message);
+            }
+        });
+
+        document.getElementById('copy-apply-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(applyMarkdown).then(() => {
+                const btn = document.getElementById('copy-apply-btn');
                 btn.textContent = 'Copied!';
                 setTimeout(() => { btn.textContent = 'Copy Markdown'; }, 2000);
             });

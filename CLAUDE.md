@@ -15,11 +15,13 @@ JD text + company name
   ↓
 [analyzer.py] → full_context + coverage_gaps   (validates requirements coverage)
   ↓
-[generator.py] → Stage 1: diagnosis → Stage 2: case   (Claude Sonnet, streamed)
+[generator.py] → Stage 1: diagnosis → Stage 2: case   (Claude Opus, streamed)
   ↓
 [score_case_quality] → quality scores   (Claude Haiku)
   ↓
 Output rendered in browser with streaming + quality bar
+  ↓  (optional)
+[applier.py] → personalized application document   (Claude Opus, streamed)
 ```
 
 Key architectural principle: gaps in case quality are **parsing problems**, not prompt problems. If the decomposer misses a skill (e.g. Amplitude, AI applied to performance), the case will never cover it. The decomposer ensures every tool, task, and KPI from the JD flows through to generation.
@@ -45,7 +47,7 @@ The output reads as if it came from the company's hiring team:
 - `jinja2` for HTML templates
 - `exa-py` for AI semantic search (funding, news, competitors, marketing)
 - `firecrawl-py` for deep website crawling
-- `anthropic` SDK for Claude API calls (Sonnet for generation, Haiku for extraction/scoring)
+- `anthropic` SDK for Claude API calls (Opus for generation/apply, Haiku for extraction/scoring)
 - `httpx` + `beautifulsoup4` + `playwright` for fallback scraping
 - `python-dotenv` for env vars
 - `rich` for CLI output formatting
@@ -56,16 +58,17 @@ The output reads as if it came from the company's hiring team:
 ## Project structure
 
 ```
-├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream)
+├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream)
 ├── main.py             # CLI entry point (--url, --name, --pdf)
 ├── decomposer.py       # JD decomposition → company_profile + requirements_map
 ├── research.py         # Exa + Firecrawl company research (industry-guided, cached)
 ├── scraper.py          # Basic web scraping (fallback)
 ├── analyzer.py         # Processes research into structured context + coverage validation
 ├── generator.py        # Two-stage Claude generation + quality scoring
+├── applier.py          # Transforms case study into personalized application document
 ├── output.py           # Markdown + PDF file output
 ├── templates/
-│   └── index.html      # Single-page web frontend (SSE streaming, quality bar)
+│   └── index.html      # Single-page web frontend (SSE streaming, quality bar, apply flow)
 ├── outputs/            # Generated case studies (CLI mode)
 ├── Dockerfile          # Railway deployment with Playwright
 ├── Procfile            # Railway web process
@@ -103,6 +106,14 @@ The output reads as if it came from the company's hiring team:
 - Business model templates inject model-specific metrics (B2B SaaS, DTC, marketplace, fintech)
 - `generate_case_study_streaming()` streams Stage 2 via async generator for SSE
 - `score_case_quality()` post-generation scoring via Haiku (specificity, realism, difficulty)
+
+### applier.py
+- Transforms a generated case study into a personalized application document
+- Inputs: case study markdown + JD + company info + applicant's CV/resume + relevant experiences
+- Extracts applicant name, background, and expertise from CV to personalize voice
+- 5-section structure: Opening → Diagnosis → What I'd Do → Non-obvious Insight → Close + Email
+- `generate_application_streaming()` streams via async generator for SSE
+- Uses Claude Opus for generation
 
 ---
 
