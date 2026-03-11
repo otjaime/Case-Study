@@ -131,7 +131,11 @@ async def _extract_profile(client: anthropic.AsyncAnthropic, cv_text: str) -> di
 
             result = _try_parse_json(text, container="object")
             if result:
-                result["_ok"] = bool(result.get("empresas"))
+                has_companies = bool(result.get("empresas"))
+                result["_ok"] = has_companies
+                if not has_companies:
+                    result["_error"] = "No companies extracted from CV"
+                    console.print("  [yellow]Profile parsed but no companies found[/yellow]")
                 return result
             else:
                 last_error = "JSON parse failed"
@@ -227,7 +231,11 @@ async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> di
 
             result = _try_parse_json(text, container="object")
             if result:
-                result["_ok"] = bool(result.get("business_problems") or result.get("tasks"))
+                has_data = bool(result.get("business_problems") or result.get("tasks"))
+                result["_ok"] = has_data
+                if not has_data:
+                    result["_error"] = "No business problems or tasks extracted"
+                    console.print("  [yellow]Case parsed but no problems/tasks found[/yellow]")
                 return result
             else:
                 last_error = "JSON parse failed"

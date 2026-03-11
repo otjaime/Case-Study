@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Case Study Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -666,21 +670,28 @@
             nameEl.textContent = file.name;
 
             if (file.type === 'application/pdf') {
-                // For PDFs, read as base64 and send to a small server endpoint,
-                // or fallback: ask user to paste. We'll read raw text extraction.
                 try {
-                    const text = await file.text();
-                    // PDFs read as text() give garbled output; check if readable
-                    const printable = text.replace(/[^\x20-\x7E\n\r\t]/g, '');
-                    if (printable.length > 200) {
-                        textarea.value = printable;
-                    } else {
-                        // Binary PDF — can't extract client-side without a library
-                        nameEl.textContent = file.name + ' (PDF attached — paste text below for best results)';
-                        textarea.placeholder = 'PDF detected but text extraction requires pasting. Copy your CV text here...';
+                    nameEl.textContent = file.name + ' (extracting text...)';
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        const strings = content.items.map(item => item.str);
+                        fullText += strings.join(' ') + '\n\n';
                     }
-                } catch {
-                    nameEl.textContent = file.name + ' (could not read)';
+                    fullText = fullText.trim();
+                    if (fullText.length > 100) {
+                        textarea.value = fullText;
+                        nameEl.textContent = file.name + ' (text extracted)';
+                    } else {
+                        nameEl.textContent = file.name + ' (no text found — paste below)';
+                        textarea.placeholder = 'PDF has no extractable text. Please paste your CV text here...';
+                    }
+                } catch (err) {
+                    console.error('PDF extraction error:', err);
+                    nameEl.textContent = file.name + ' (extraction failed — paste below)';
                 }
             } else {
                 // Plain text, markdown, doc-like
@@ -696,8 +707,10 @@
         document.getElementById('apply-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const cvText = storedCvText.trim();
+            // Re-read CV textarea in case user updated it after case generation
+            const cvText = (document.getElementById('cv_text').value || storedCvText).trim();
             if (!cvText) { alert('No CV loaded. Go back and paste or upload your CV before generating.'); return; }
+            storedCvText = cvText;  // Update stored value
 
             const applySection = document.getElementById('apply-section');
             const applyLoading = document.getElementById('apply-loading');
