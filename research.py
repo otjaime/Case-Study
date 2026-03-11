@@ -20,13 +20,15 @@ CACHE_DIR = Path("/tmp/case_study_cache")
 CACHE_TTL = 7 * 24 * 3600  # 7 days
 
 
-def _cache_path(domain: str) -> Path:
+def _cache_path(domain: str, industry: str = "") -> Path:
     CACHE_DIR.mkdir(exist_ok=True)
-    return CACHE_DIR / f"{domain.replace('.', '_').replace('/', '_')}.json"
+    industry_slug = industry.lower().replace(" ", "_").replace("/", "_")[:20] if industry else "generic"
+    key = f"{domain.replace('.', '_').replace('/', '_')}_{industry_slug}"
+    return CACHE_DIR / f"{key}.json"
 
 
-def _load_cache(domain: str) -> dict | None:
-    path = _cache_path(domain)
+def _load_cache(domain: str, industry: str = "") -> dict | None:
+    path = _cache_path(domain, industry)
     if not path.exists():
         return None
     try:
@@ -39,9 +41,9 @@ def _load_cache(domain: str) -> dict | None:
         return None
 
 
-def _save_cache(domain: str, payload: dict):
+def _save_cache(domain: str, payload: dict, industry: str = ""):
     try:
-        path = _cache_path(domain)
+        path = _cache_path(domain, industry)
         path.write_text(json.dumps({"cached_at": time.time(), "payload": payload}))
     except Exception:
         pass  # cache failures are non-critical
@@ -385,14 +387,14 @@ async def research_all(company_name: str, domain: str, company_profile: dict | N
     Uses a domain-level file cache (TTL 7 days) to avoid redundant API calls.
     If company_profile is provided, research queries are guided by industry/stage.
     """
-    cached = _load_cache(domain)
+    industry = (company_profile or {}).get("industry", "")
+    stage = (company_profile or {}).get("company_stage", "")
+
+    cached = _load_cache(domain, industry)
     if cached:
         return cached
 
     console.print("\n[bold]Researching company (Exa + Firecrawl)...[/bold]\n")
-
-    industry = (company_profile or {}).get("industry", "")
-    stage = (company_profile or {}).get("company_stage", "")
 
     # Build industry-specific news query
     news_extra = ""
@@ -419,7 +421,7 @@ async def research_all(company_name: str, domain: str, company_profile: dict | N
         "industry_intel": industry_data,
     }
 
-    _save_cache(domain, result)
+    _save_cache(domain, result, industry)
     return result
 
 
@@ -433,7 +435,7 @@ async def _research_industry_specific(company_name: str, industry: str, stage: s
     ind = industry.lower()
 
     # Industry-specific queries
-    if "fintech" in ind or "finance" in ind:
+    if "fintech" in ind or "payments" in ind:
         queries.append(f'"{company_name}" regulatory compliance fintech')
     if "retail" in ind or "ecommerce" in ind or "cpg" in ind:
         queries.append(f'"{company_name}" omnichannel digital transformation retail')
@@ -443,6 +445,19 @@ async def _research_industry_specific(company_name: str, industry: str, stage: s
         queries.append(f'"{company_name}" student engagement platform growth')
     if "saas" in ind or "software" in ind:
         queries.append(f'"{company_name}" product-led growth enterprise expansion')
+
+    # Institutional finance
+    if any(term in ind for term in ["institutional", "hedge fund", "asset management",
+                                     "portfolio", "investment management", "fund"]):
+        queries.append(
+            f'"{company_name}" hedge fund asset manager technology adoption institutional analytics'
+        )
+
+    # Consumer app
+    if "consumer app" in ind or "mobile app" in ind:
+        queries.append(
+            f'"{company_name}" user acquisition retention mobile growth'
+        )
 
     # Stage-specific queries
     if stage == "corporate" or stage == "enterprise":

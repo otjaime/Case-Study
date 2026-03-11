@@ -16,6 +16,16 @@ Be exhaustive on tools and tasks — missing one means the case won't test it.""
 
 DECOMPOSE_USER = """Extract company_profile and requirements_map from this job description.
 
+Business model classification guide:
+- "B2B SaaS": software sold to businesses, subscription, demos, enterprise sales
+- "institutional B2B": hedge funds, asset managers, family offices, portfolio analytics
+- "fintech": payments, neobanks, lending, wallets, financial services for consumers
+- "DTC ecommerce": direct-to-consumer physical products, subscription boxes, CPG online
+- "CPG": consumer packaged goods with retail distribution (Target, Walmart, Costco)
+- "consumer app": mobile/web apps for individual consumers (fitness, food delivery, etc.)
+- "marketplace": two-sided platforms connecting buyers and sellers
+- "B2C": direct-to-consumer digital services (not physical goods)
+
 JD:
 {jd_text}
 
@@ -23,8 +33,8 @@ Return exactly this JSON structure (fill every field, use "unknown" if not infer
 {{
   "company_profile": {{
     "company_name": "string",
-    "industry": "string (e.g. fintech, retail, SaaS, marketplace, CPG, energy, edtech)",
-    "business_model": "B2B | B2C | B2B2C | marketplace",
+    "industry": "string (e.g. fintech, retail, SaaS, marketplace, CPG, energy, edtech, institutional finance)",
+    "business_model": "B2B SaaS | B2C | B2B2C | marketplace | DTC ecommerce | institutional B2B | fintech | consumer app | CPG",
     "product_type": "app | web platform | physical + digital | SaaS",
     "company_stage": "startup | scaleup | corporate | enterprise",
     "headcount_estimate": "1-50 | 51-200 | 201-1000 | 1000+",
