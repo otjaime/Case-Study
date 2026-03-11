@@ -1,10 +1,11 @@
 """Web frontend for the Job Case Study Generator."""
 
 import json
+import asyncio
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.responses import StreamingResponse
 
@@ -13,6 +14,8 @@ from analyzer import build_context
 from decomposer import decompose_jd
 from generator import generate_case_study, generate_case_study_streaming, score_case_quality
 from applier import generate_application_streaming
+from deck import generate_deck_pdf
+from video import create_video_job, get_video_job, run_video_pipeline
 
 load_dotenv(override=True)
 
@@ -226,3 +229,101 @@ async def apply_stream(request: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/export-deck")
+async def export_deck(request: Request):
+    """Generate a presentation-style PDF deck from the diagnostic document."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid request body."}, status_code=400)
+
+    markdown = body.get("markdown", "").strip()
+    profile = body.get("profile") or {}
+    company_name = body.get("company_name", "").strip()
+    job_title = body.get("job_title", "").strip()
+    mapping_quality = body.get("mapping_quality") or {}
+
+    if not markdown:
+        return JSONResponse(
+            {"error": "Diagnostic markdown is required."},
+            status_code=400,
+        )
+
+    try:
+        pdf_bytes = generate_deck_pdf(
+            markdown=markdown,
+            profile=profile,
+            company_name=company_name,
+            job_title=job_title,
+            mapping_quality=mapping_quality,
+        )
+
+        slug = (company_name or "company").lower().replace(" ", "-")[:30]
+        filename = f"diagnostic-{slug}.pdf"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"PDF generation failed: {str(exc)}"},
+            status_code=500,
+        )
+
+
+@app.post("/generate-video")
+async def generate_video(request: Request):
+    """Start an async video generation pipeline (script → audio → lip-sync)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid request body."}, status_code=400)
+
+    markdown = body.get("markdown", "").strip()
+    profile = body.get("profile") or {}
+    company_name = body.get("company_name", "").strip()
+    photo_b64 = body.get("photo_b64", "").strip()
+    voice_pref = body.get("voice_pref", "female").strip()
+
+    if not markdown:
+        return JSONResponse({"error": "Diagnostic markdown is required."}, status_code=400)
+    if not photo_b64:
+        return JSONResponse({"error": "Photo is required."}, status_code=400)
+
+    import base64
+    try:
+        photo_bytes = base64.b64decode(photo_b64)
+    except Exception:
+        return JSONResponse({"error": "Invalid photo data."}, status_code=400)
+
+    if len(photo_bytes) > 5 * 1024 * 1024:
+        return JSONResponse({"error": "Photo must be under 5MB."}, status_code=400)
+
+    job_id = create_video_job()
+
+    # Launch pipeline as background task
+    asyncio.create_task(
+        run_video_pipeline(job_id, markdown, profile, company_name,
+                           photo_bytes, voice_pref)
+    )
+
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/video-status/{job_id}")
+async def video_status(job_id: str):
+    """Poll for video generation status."""
+    job = get_video_job(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found."}, status_code=404)
+
+    return JSONResponse({
+        "status": job["status"],
+        "video_url": job.get("video_url"),
+        "script": job.get("script"),
+        "error": job.get("error"),
+    })

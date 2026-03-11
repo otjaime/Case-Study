@@ -356,6 +356,20 @@
             text-align: center;
             margin-bottom: 4px;
         }
+
+        .deck-btn {
+            background: #2c3e50;
+            width: 100%;
+        }
+
+        .deck-btn:hover { opacity: 0.85; }
+
+        .video-btn {
+            background: #7c5cfc;
+            width: 100%;
+        }
+
+        .video-btn:hover { opacity: 0.85; }
     </style>
 </head>
 <body>
@@ -440,6 +454,39 @@
             <div class="apply-warnings" id="apply-warnings"></div>
             <div class="apply-quality-bar" id="apply-quality-bar" style="display:none;"></div>
             <div class="case-study" id="apply-output"></div>
+            <div class="deck-actions" id="deck-actions" style="display:none; margin-top: 16px;">
+                <button class="deck-btn" id="deck-btn">Download PDF Deck</button>
+            </div>
+
+            <!-- Video explainer section -->
+            <div class="video-section" id="video-section" style="display:none; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e8e8;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Video Explainer</h3>
+                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Upload a headshot to generate a 2-minute video presenting your diagnosis.</p>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Your Photo <span class="optional">(headshot, clear face, JPEG/PNG)</span></label>
+                    <div class="file-upload">
+                        <input type="file" id="photo_file" accept="image/jpeg,image/png">
+                        <span class="file-name" id="photo-file-name"></span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Voice</label>
+                    <select id="voice_pref" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
+                        <option value="female">Female (Rachel)</option>
+                        <option value="male">Male (Josh)</option>
+                    </select>
+                </div>
+                <button class="video-btn" id="video-btn">Generate Video Explainer</button>
+                <div id="video-progress" style="display:none; margin-top: 12px; text-align: center; padding: 16px;">
+                    <div class="spinner" style="width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #7c5cfc; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px;"></div>
+                    <span id="video-status-text" style="font-size: 13px; color: #666;"></span>
+                </div>
+                <div id="video-result" style="display:none; margin-top: 16px;">
+                    <video id="video-player" controls style="width: 100%; border-radius: 8px; background: #000;"></video>
+                    <a id="video-download" target="_blank" style="display: block; margin-top: 8px; font-size: 13px; color: #4a9eff; text-decoration: none;">Download Video</a>
+                </div>
+                <div id="video-error" style="display:none; margin-top: 12px;" class="apply-warning"></div>
+            </div>
         </div>
     </div>
 
@@ -451,6 +498,9 @@
         let storedJobTitle = '';
         let storedJdText = '';
         let storedCvText = '';
+        // Store structured data from apply SSE for deck/video export
+        let storedProfile = null;
+        let storedMappingQuality = null;
 
         const STATUS_MESSAGES = {
             decomposing: 'Analyzing job description...',
@@ -818,6 +868,7 @@
                         }
 
                         if (parsed.profile) {
+                            storedProfile = parsed.profile;
                             const name = parsed.profile.nombre || '';
                             if (name) {
                                 applyDetail.textContent = 'Profile extracted: ' + name;
@@ -833,6 +884,7 @@
                         }
 
                         if (parsed.mapping_quality) {
+                            storedMappingQuality = parsed.mapping_quality;
                             const q = parsed.mapping_quality;
                             const bar = document.getElementById('apply-quality-bar');
                             const total = (q.alto || 0) + (q.medio || 0) + (q.bajo || 0) + (q.ninguno || 0);
@@ -866,6 +918,10 @@
                 }
                 applyResult.style.display = 'block';
                 applyBtn.disabled = false;
+                // Show deck download button
+                document.getElementById('deck-actions').style.display = 'block';
+                // Show video section
+                document.getElementById('video-section').style.display = 'block';
 
             } catch (err) {
                 applyLoading.style.display = 'none';
@@ -881,6 +937,146 @@
                 btn.textContent = 'Copied!';
                 setTimeout(() => { btn.textContent = 'Copy Markdown'; }, 2000);
             });
+        });
+
+        // --- PDF Deck download ---
+        document.getElementById('deck-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('deck-btn');
+            btn.disabled = true;
+            btn.textContent = 'Generating PDF...';
+
+            try {
+                const response = await fetch('/export-deck', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        markdown: applyMarkdown,
+                        profile: storedProfile || {},
+                        company_name: storedCompanyName,
+                        job_title: storedJobTitle,
+                        mapping_quality: storedMappingQuality || {},
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'PDF generation failed');
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'diagnostic-' + (storedCompanyName || 'company').toLowerCase().replace(/\s+/g, '-') + '.pdf';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('PDF export failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Download PDF Deck';
+            }
+        });
+
+        // --- Video Explainer ---
+
+        // Photo file name display
+        document.getElementById('photo_file').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const nameEl = document.getElementById('photo-file-name');
+            if (file) {
+                nameEl.textContent = file.name;
+            }
+        });
+
+        // Video generation
+        document.getElementById('video-btn').addEventListener('click', async () => {
+            const photoFile = document.getElementById('photo_file').files[0];
+            if (!photoFile) { alert('Please upload a headshot photo.'); return; }
+            if (photoFile.size > 5 * 1024 * 1024) { alert('Photo must be under 5MB.'); return; }
+            if (!photoFile.type.startsWith('image/')) { alert('Please upload a JPEG or PNG image.'); return; }
+
+            const btn = document.getElementById('video-btn');
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            document.getElementById('video-error').style.display = 'none';
+            document.getElementById('video-result').style.display = 'none';
+
+            try {
+                // Read photo as base64
+                const arrayBuffer = await photoFile.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const photoB64 = btoa(binary);
+
+                const response = await fetch('/generate-video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        markdown: applyMarkdown,
+                        profile: storedProfile || {},
+                        company_name: storedCompanyName,
+                        photo_b64: photoB64,
+                        voice_pref: document.getElementById('voice_pref').value,
+                    }),
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                const jobId = data.job_id;
+                document.getElementById('video-progress').style.display = 'block';
+
+                const STATUS_TEXT = {
+                    pending: 'Starting video pipeline...',
+                    script: 'Writing video script...',
+                    audio: 'Generating voiceover...',
+                    video: 'Creating lip-sync video (1-2 min)...',
+                    ready: 'Video ready!',
+                };
+
+                const poll = setInterval(async () => {
+                    try {
+                        const statusResp = await fetch('/video-status/' + jobId);
+                        const status = await statusResp.json();
+
+                        document.getElementById('video-status-text').textContent =
+                            STATUS_TEXT[status.status] || status.status;
+
+                        if (status.status === 'ready') {
+                            clearInterval(poll);
+                            document.getElementById('video-progress').style.display = 'none';
+                            document.getElementById('video-result').style.display = 'block';
+                            document.getElementById('video-player').src = status.video_url;
+                            document.getElementById('video-download').href = status.video_url;
+                            btn.disabled = false;
+                            btn.textContent = 'Generate Video Explainer';
+                        }
+                        if (status.status === 'error') {
+                            clearInterval(poll);
+                            document.getElementById('video-progress').style.display = 'none';
+                            const errorEl = document.getElementById('video-error');
+                            errorEl.textContent = 'Video generation failed: ' + (status.error || 'unknown');
+                            errorEl.style.display = 'block';
+                            btn.disabled = false;
+                            btn.textContent = 'Generate Video Explainer';
+                        }
+                    } catch (pollErr) {
+                        console.error('Polling error:', pollErr);
+                    }
+                }, 3000);
+
+            } catch (err) {
+                document.getElementById('video-progress').style.display = 'none';
+                const errorEl = document.getElementById('video-error');
+                errorEl.textContent = 'Video generation failed: ' + err.message;
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Generate Video Explainer';
+            }
         });
     </script>
 </body>

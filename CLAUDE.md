@@ -22,6 +22,10 @@ JD text + company name
 Output rendered in browser with streaming + quality bar
   ↓  (optional)
 [applier.py] → personalized application document   (Claude Opus, streamed)
+  ↓  (optional)
+[deck.py] → presentation-style PDF deck   (WeasyPrint, no API cost)
+  ↓  (optional)
+[video.py] → AI video explainer   (Haiku script + ElevenLabs TTS + HeyGen lip-sync)
 ```
 
 Key architectural principle: gaps in case quality are **parsing problems**, not prompt problems. If the decomposer misses a skill (e.g. Amplitude, AI applied to performance), the case will never cover it. The decomposer ensures every tool, task, and KPI from the JD flows through to generation.
@@ -58,7 +62,7 @@ The output reads as if it came from the company's hiring team:
 ## Project structure
 
 ```
-├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream)
+├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream, POST /export-deck, POST /generate-video, GET /video-status)
 ├── main.py             # CLI entry point (--url, --name, --pdf)
 ├── decomposer.py       # JD decomposition → company_profile + requirements_map
 ├── research.py         # Exa + Firecrawl company research (industry-guided, cached)
@@ -66,9 +70,12 @@ The output reads as if it came from the company's hiring team:
 ├── analyzer.py         # Processes research into structured context + coverage validation
 ├── generator.py        # Two-stage Claude generation + quality scoring
 ├── applier.py          # Transforms case study into personalized application document
-├── output.py           # Markdown + PDF file output
+├── deck.py             # Generates presentation-style PDF deck from diagnostic markdown
+├── video.py            # AI video explainer: script (Haiku) → audio (ElevenLabs) → lip-sync (HeyGen)
+├── output.py           # Markdown + PDF file output (CLI)
 ├── templates/
-│   └── index.html      # Single-page web frontend (SSE streaming, quality bar, apply flow)
+│   ├── index.html      # Single-page web frontend (SSE streaming, quality bar, apply flow, deck, video)
+│   └── deck.html       # Jinja2 template for landscape PDF deck (rendered server-side by WeasyPrint)
 ├── outputs/            # Generated case studies (CLI mode)
 ├── Dockerfile          # Railway deployment with Playwright
 ├── Procfile            # Railway web process
@@ -120,6 +127,25 @@ The output reads as if it came from the company's hiring team:
 - Depth distribution: 50/30/20 weighted by experience match strength
 - Problems with no matching experience use reasoning + benchmarks instead of fabricated experience
 
+### deck.py
+- Generates a presentation-style landscape A4 PDF deck from the diagnostic markdown
+- `_parse_diagnostic_sections()` splits markdown into: opening, what_i_see, solutions (per problem), insight, first_30_days, close, email
+- `_extract_key_metrics()` pulls bold text, percentages, dollar amounts for stat cards
+- `generate_deck_pdf()` renders `templates/deck.html` via Jinja2 + WeasyPrint → PDF bytes
+- 5-7 page deck: cover (dark bg), diagnosis with stat cards, one page per problem, experience match visualization, close
+- CSS-only charts: horizontal bars, stat cards, colored match-level indicators
+- Zero API cost — uses data already computed during apply pipeline
+
+### video.py
+- AI video explainer pipeline: script → audio → lip-sync video
+- Step 1: `generate_script()` — Haiku condenses diagnostic into ~300 word spoken script (2 minutes)
+- Step 2: `generate_audio()` — ElevenLabs TTS API converts script to audio (pre-made voices: Rachel/Josh)
+- Step 3: `generate_video_heygen()` — HeyGen lip-syncs candidate photo with audio
+- `run_video_pipeline()` orchestrates all 3 steps as async background task
+- In-memory job store with `create_video_job()` / `get_video_job()` + 1-hour TTL cleanup
+- Frontend polls `GET /video-status/{job_id}` every 3 seconds
+- Cost: ~$0.16-0.28 per video (Haiku ~$0.001 + ElevenLabs ~$0.02 + HeyGen ~$0.20)
+
 ---
 
 ## Environment variables
@@ -129,6 +155,8 @@ ANTHROPIC_API_KEY=sk-ant-...     # Required — Claude API
 EXA_API_KEY=...                  # Required — Exa semantic search
 FIRECRAWL_API_KEY=...            # Required — Firecrawl website crawl
 ANTHROPIC_BASE_URL=...           # Optional — defaults to api.anthropic.com
+ELEVENLABS_API_KEY=...           # Optional — for video explainer (ElevenLabs TTS)
+HEYGEN_API_KEY=...               # Optional — for video explainer (HeyGen lip-sync)
 ```
 
 Without Exa/Firecrawl keys, the tool falls back to basic scrapers (much weaker output).
@@ -159,3 +187,4 @@ python main.py --url "https://..." --name "stripe-growth-lead" --pdf
 
 Deployed on Railway via Dockerfile. Auto-deploys from GitHub (`otjaime/Case-Study`).
 Set `ANTHROPIC_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY` in Railway variables.
+For video feature: also set `ELEVENLABS_API_KEY` and `HEYGEN_API_KEY`.
