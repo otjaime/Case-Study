@@ -273,6 +273,41 @@
             margin: 0 auto 16px;
         }
 
+        .apply-warnings {
+            margin-bottom: 12px;
+        }
+
+        .apply-warning {
+            font-size: 13px;
+            color: #856404;
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+        }
+
+        .apply-quality-bar {
+            display: flex;
+            gap: 16px;
+            padding: 10px 16px;
+            background: #f0f7f4;
+            border: 1px solid #b8d4c8;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 16px;
+        }
+
+        .apply-quality-bar .match-count {
+            font-weight: 600;
+        }
+
+        .apply-quality-bar .match-count.high { color: #27ae60; }
+        .apply-quality-bar .match-count.mid { color: #f39c12; }
+        .apply-quality-bar .match-count.low { color: #c0392b; }
+        .apply-quality-bar .match-count.none { color: #999; }
+
         .divider {
             border: none;
             border-top: 1px solid #eee;
@@ -398,6 +433,8 @@
                 <h2>Your Application Document</h2>
                 <button class="copy-btn" id="copy-apply-btn">Copy Markdown</button>
             </div>
+            <div class="apply-warnings" id="apply-warnings"></div>
+            <div class="apply-quality-bar" id="apply-quality-bar" style="display:none;"></div>
             <div class="case-study" id="apply-output"></div>
         </div>
     </div>
@@ -680,6 +717,8 @@
             applyMarkdown = '';
             applyOutput.innerHTML = '';
             applyWordCount.textContent = '';
+            document.getElementById('apply-warnings').innerHTML = '';
+            document.getElementById('apply-quality-bar').style.display = 'none';
 
             const APPLY_STATUS = {
                 extracting_profile: 'Extracting profile from CV...',
@@ -770,6 +809,30 @@
                             if (name) {
                                 applyDetail.textContent = 'Profile extracted: ' + name;
                             }
+                        }
+
+                        if (parsed.warning) {
+                            const warningsEl = document.getElementById('apply-warnings');
+                            const div = document.createElement('div');
+                            div.className = 'apply-warning';
+                            div.textContent = parsed.warning;
+                            warningsEl.appendChild(div);
+                        }
+
+                        if (parsed.mapping_quality) {
+                            const q = parsed.mapping_quality;
+                            const bar = document.getElementById('apply-quality-bar');
+                            const total = (q.alto || 0) + (q.medio || 0) + (q.bajo || 0) + (q.ninguno || 0);
+                            if (total > 0) {
+                                bar.innerHTML =
+                                    `<span>Experience match: </span>` +
+                                    `<span><span class="match-count high">${q.alto || 0}</span> strong</span>` +
+                                    `<span><span class="match-count mid">${q.medio || 0}</span> method</span>` +
+                                    `<span><span class="match-count low">${q.bajo || 0}</span> adjacent</span>` +
+                                    `<span><span class="match-count none">${q.ninguno || 0}</span> none</span>`;
+                                bar.style.display = 'flex';
+                            }
+                            applyDetail.textContent = `Step 3 of 4 — ${q.alto || 0} strong + ${q.medio || 0} method matches found`;
                         }
 
                         if (parsed.chunk) {
