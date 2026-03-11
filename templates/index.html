@@ -346,6 +346,16 @@
                 <textarea id="jd_text" placeholder="Paste the full job description here..." required></textarea>
             </div>
 
+            <div class="form-group">
+                <label>Your CV / Resume <span class="optional">(for apply step)</span></label>
+                <div class="file-upload">
+                    <input type="file" id="cv_file" accept=".pdf,.txt,.doc,.docx,.md">
+                    <span class="file-name" id="cv-file-name"></span>
+                </div>
+                <p class="or-divider">or paste below</p>
+                <textarea id="cv_text" placeholder="Paste your CV or resume text here. Used after generation to create a personalized application document."></textarea>
+            </div>
+
             <button type="submit" id="submit-btn">Generate Case Study</button>
         </form>
 
@@ -372,16 +382,6 @@
             <p class="apply-subtitle">Turn this case into a proactive application document. Add 2-3 relevant experiences from your background.</p>
 
             <form id="apply-form">
-                <div class="form-group">
-                    <label>Your CV / Resume</label>
-                    <div class="file-upload">
-                        <input type="file" id="cv_file" accept=".pdf,.txt,.doc,.docx,.md">
-                        <span class="file-name" id="cv-file-name"></span>
-                    </div>
-                    <p class="or-divider">or paste below</p>
-                    <textarea id="cv_text" placeholder="Paste your CV or resume text here..."></textarea>
-                </div>
-
                 <div class="form-group">
                     <label>Your Relevant Experiences</label>
                     <textarea id="experiences" placeholder="2-3 concrete experiences that are analogous to the challenges in the case. Example:&#10;&#10;- Built the referral system from scratch, reaching 18% of new orders in 4 months&#10;- Reduced CAC by 35% by restructuring audience segmentation in Meta Ads&#10;- Designed the unit economics model that justified a 2x increase in paid budget"></textarea>
@@ -414,6 +414,7 @@
         let storedCompanyName = '';
         let storedJobTitle = '';
         let storedJdText = '';
+        let storedCvText = '';
 
         const STATUS_MESSAGES = {
             decomposing: 'Analyzing job description...',
@@ -503,6 +504,7 @@
             storedCompanyName = document.getElementById('company_name').value;
             storedJobTitle = document.getElementById('job_title').value;
             storedJdText = document.getElementById('jd_text').value;
+            storedCvText = document.getElementById('cv_text').value;
 
             try {
                 const response = await fetch('/generate-stream', {
@@ -663,8 +665,8 @@
             e.preventDefault();
 
             const experiences = document.getElementById('experiences').value.trim();
-            const cvText = document.getElementById('cv_text').value.trim();
-            if (!cvText) { alert('Paste your CV or resume.'); return; }
+            const cvText = storedCvText.trim();
+            if (!cvText) { alert('No CV loaded. Go back and paste or upload your CV before generating.'); return; }
             if (!experiences) { alert('Add at least one relevant experience.'); return; }
 
             const applySection = document.getElementById('apply-section');
