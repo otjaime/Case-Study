@@ -385,7 +385,8 @@ Structure:
 
 1 paragraph describing the company's current situation. Include specific metrics where available. \
 Reference their stage, market position, and the digital/growth challenge they face. \
-Use real data points from the research but present them as internal context the company is sharing with the candidate. \
+Use ONLY real data points from the research context above — present them as internal context the company is sharing with the candidate. \
+If a specific metric isn't in the research, use qualitative descriptions instead of inventing numbers. \
 Make it feel like a real internal brief — direct, specific, a bit raw.
 
 ## The Challenge
@@ -396,12 +397,16 @@ This should be the kind of problem the person in this role would actually face i
 
 ## Your Task
 
-4-5 numbered deliverables the candidate must produce. Each task must test a DIFFERENT skill from the requirements map:
+3 numbered deliverables the candidate must produce. Each task should test MULTIPLE skills from the requirements map \
+(combine related skills into one meaty task rather than splitting them into separate shallow tasks):
 - At least one task must explicitly require the listed tools (e.g. "Build a measurement framework using [specific tool]")
 - At least one task must reference emerging skills listed in the requirements
-- At least one deliverable that requires creative/strategic thinking (not just analysis)
-- At least one that requires quantitative reasoning (metrics, projections, budget)
-- Each task should be answerable in 300-500 words by the candidate
+- Each task must combine strategic/creative thinking WITH quantitative reasoning
+- Each task should require 500-800 words of substantive analysis by the candidate
+
+TASK PRIORITIZATION:
+The 3 tasks MUST be ordered by business impact severity (highest first). \
+After each task title, add a one-line "Why this matters most:" explaining the business consequence of getting this wrong.
 
 ## Data & Context
 
@@ -412,6 +417,18 @@ Provide enough data for the candidate to build quantitative answers. Include:
 - Include metrics relevant to the primary KPIs from the requirements map
 - Include constraints that reflect the company stage reality
 - Frame gaps honestly: "We don't have reliable attribution data yet" or "Our current CRM doesn't track X"
+
+DATA INTEGRITY RULES:
+- Every metric or number in the case MUST come directly from the research context above.
+- If the research mentions a directional trend but no specific number, use qualitative language: \
+"significant growth" not "186% growth."
+- Do NOT invent, extrapolate, or estimate specific percentages, dollar amounts, or growth rates \
+that are not in the research context.
+- When specific numbers aren't available from research, use ranges or qualitative descriptors.
+- It is better to say "triple-digit retail growth YoY" (if research says so) than to fabricate "147% retail growth."
+- Tag each data point: [PUBLIC] for data from research, [INFERRED] for reasonable inferences, \
+[UNKNOWN] where data would exist internally but isn't publicly available.
+- Do NOT present [INFERRED] data as fact — use language like "estimated at" or "likely in the range of."
 
 ## Evaluation Criteria
 
@@ -428,12 +445,7 @@ Realistic constraints that force interesting tradeoffs:
 - Team size and reporting structure from the role profile
 - Timeline (first 90 days)
 - Any technical or organizational constraints implied by the JD or company stage
-
-## Format & Submission
-
-Specify format appropriate for the seniority level. \
-Expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
-Keep it practical — what a real company would ask for.
+- Expected deliverable format and length appropriate for the seniority level
 
 ---
 
@@ -571,7 +583,8 @@ Structure:
 
 1 paragraph describing the company's current situation. Include specific metrics where available. \
 Reference their stage, market position, and the digital/growth challenge they face. \
-Use real data points from the research but present them as internal context the company is sharing with the candidate. \
+Use ONLY real data points from the research context above — present them as internal context the company is sharing with the candidate. \
+If a specific metric isn't in the research, use qualitative descriptions instead of inventing numbers. \
 Make it feel like a real internal brief — direct, specific, a bit raw.
 
 ## The Challenge
@@ -582,12 +595,16 @@ This should be the kind of problem the person in this role would actually face i
 
 ## Your Task
 
-4-5 numbered deliverables the candidate must produce. Each task must test a DIFFERENT skill from the requirements map:
+3 numbered deliverables the candidate must produce. Each task should test MULTIPLE skills from the requirements map \
+(combine related skills into one meaty task rather than splitting them into separate shallow tasks):
 - At least one task must explicitly require the listed tools (e.g. "Build a measurement framework using [specific tool]")
 - At least one task must reference emerging skills listed in the requirements
-- At least one deliverable that requires creative/strategic thinking (not just analysis)
-- At least one that requires quantitative reasoning (metrics, projections, budget)
-- Each task should be answerable in 300-500 words by the candidate
+- Each task must combine strategic/creative thinking WITH quantitative reasoning
+- Each task should require 500-800 words of substantive analysis by the candidate
+
+TASK PRIORITIZATION:
+The 3 tasks MUST be ordered by business impact severity (highest first). \
+After each task title, add a one-line "Why this matters most:" explaining the business consequence of getting this wrong.
 
 ## Data & Context
 
@@ -598,6 +615,18 @@ Provide enough data for the candidate to build quantitative answers. Include:
 - Include metrics relevant to the primary KPIs from the requirements map
 - Include constraints that reflect the company stage reality
 - Frame gaps honestly: "We don't have reliable attribution data yet" or "Our current CRM doesn't track X"
+
+DATA INTEGRITY RULES:
+- Every metric or number in the case MUST come directly from the research context above.
+- If the research mentions a directional trend but no specific number, use qualitative language: \
+"significant growth" not "186% growth."
+- Do NOT invent, extrapolate, or estimate specific percentages, dollar amounts, or growth rates \
+that are not in the research context.
+- When specific numbers aren't available from research, use ranges or qualitative descriptors.
+- It is better to say "triple-digit retail growth YoY" (if research says so) than to fabricate "147% retail growth."
+- Tag each data point: [PUBLIC] for data from research, [INFERRED] for reasonable inferences, \
+[UNKNOWN] where data would exist internally but isn't publicly available.
+- Do NOT present [INFERRED] data as fact — use language like "estimated at" or "likely in the range of."
 
 ## Evaluation Criteria
 
@@ -614,12 +643,7 @@ Realistic constraints that force interesting tradeoffs:
 - Team size and reporting structure from the role profile
 - Timeline (first 90 days)
 - Any technical or organizational constraints implied by the JD or company stage
-
-## Format & Submission
-
-Specify format appropriate for the seniority level. \
-Expected length (2-4 pages), format (deck vs. doc vs. memo), and any structural requirements. \
-Keep it practical — what a real company would ask for.
+- Expected deliverable format and length appropriate for the seniority level
 
 ---
 

@@ -124,7 +124,7 @@ EXTRACTION RULES:
 - Extract metrics from "Data & Context" — include actual numbers.
 - Extract constraints from "Constraints" section — budget, team, timeline.
 - Criteria from "Evaluation Criteria".
-- Include ALL tasks, not just the first 3."""
+- Include ALL tasks from "Your Task" section."""
 
 
 async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> dict:
@@ -348,6 +348,11 @@ Structure:
 
 **Section 3 — What I'd Do (2-3 pages)**
 CRITICAL: You MUST use the experience-to-task mapping to ground EVERY solution.
+
+DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the task with the strongest experience match (alto), \
+~30% on the second strongest, ~20% on the remaining. Depth on your strongest match > breadth across all tasks.
+Tasks are ordered by business impact (first = most critical). If your strongest match aligns with the \
+highest-impact task, lead with it. If not, lead with the highest-impact task but go deepest on your strongest match.
 
 For each task where nivel_match is "alto" or "medio":
 
