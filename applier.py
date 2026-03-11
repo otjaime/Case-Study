@@ -8,10 +8,63 @@ V2 pipeline:
 """
 
 import json
+import asyncio
 import anthropic
 from rich.console import Console
 
 console = Console()
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _try_parse_json(text: str, container: str = "object"):
+    """Extract and parse JSON from model output, handling truncated responses.
+
+    Args:
+        text: Raw model output text.
+        container: "object" to find {...} or "array" to find [...].
+
+    Returns:
+        Parsed dict/list, or None if parsing fails.
+    """
+    if container == "object":
+        start_char, end_char = "{", "}"
+    else:
+        start_char, end_char = "[", "]"
+
+    start = text.find(start_char)
+    if start < 0:
+        return None
+
+    end = text.rfind(end_char) + 1
+    if end > start:
+        try:
+            return json.loads(text[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt truncation repair: close unclosed structures
+    fragment = text[start:]
+    # Strip to last complete value (before a trailing incomplete key/string)
+    stripped = fragment.rstrip()
+    # If ends mid-string or mid-key, cut to last comma
+    if stripped and stripped[-1] not in (end_char, start_char, ",", '"',
+                                         "e", "l", "0", "1", "2", "3",
+                                         "4", "5", "6", "7", "8", "9"):
+        last_comma = stripped.rfind(",")
+        if last_comma > 0:
+            stripped = stripped[:last_comma]
+
+    open_braces = stripped.count("{") - stripped.count("}")
+    open_brackets = stripped.count("[") - stripped.count("]")
+    repaired = stripped + "}" * max(open_braces, 0) + "]" * max(open_brackets, 0)
+
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 OPUS_MODEL = "claude-opus-4-6"
@@ -60,27 +113,40 @@ If something is not available, use empty string or empty list."""
 async def _extract_profile(client: anthropic.AsyncAnthropic, cv_text: str) -> dict:
     """Step 0A: Extract structured profile from CV using Haiku."""
     console.print("  [dim]Extracting profile from CV...[/dim]")
-    try:
-        message = await client.messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=3000,
-            messages=[{"role": "user", "content": EXTRACT_PROFILE_PROMPT.format(
-                cv_text=cv_text[:15000]
-            )}],
-        )
-        text = message.content[0].text.strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            result = json.loads(text[start:end])
-            result["_ok"] = bool(result.get("empresas"))
-            return result
-    except Exception as exc:
-        console.print(f"  [yellow]Profile extraction error: {exc}[/yellow]")
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            message = await client.messages.create(
+                model=HAIKU_MODEL,
+                max_tokens=4096,
+                messages=[{"role": "user", "content": EXTRACT_PROFILE_PROMPT.format(
+                    cv_text=cv_text[:15000]
+                )}],
+            )
+            text = message.content[0].text.strip()
+
+            if message.stop_reason == "max_tokens":
+                console.print("  [yellow]Profile extraction truncated — attempting repair[/yellow]")
+
+            result = _try_parse_json(text, container="object")
+            if result:
+                result["_ok"] = bool(result.get("empresas"))
+                return result
+            else:
+                last_error = "JSON parse failed"
+                console.print(f"  [yellow]Profile JSON parse failed (attempt {attempt + 1})[/yellow]")
+
+        except Exception as exc:
+            last_error = str(exc)
+            console.print(f"  [yellow]Profile extraction error (attempt {attempt + 1}): {exc}[/yellow]")
+
+        if attempt == 0:
+            await asyncio.sleep(1)
 
     return {"nombre": "", "rol_actual": "", "empresas": [], "skills_tecnicos": [],
             "skills_funcionales": [], "industrias": [], "seniority": "", "contacto": "",
-            "_ok": False}
+            "_ok": False, "_error": last_error}
 
 
 # ---------------------------------------------------------------------------
@@ -143,27 +209,40 @@ EXTRACTION RULES:
 async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> dict:
     """Step 0B: Extract structured case data using Haiku."""
     console.print("  [dim]Analyzing case structure...[/dim]")
-    try:
-        message = await client.messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=3000,
-            messages=[{"role": "user", "content": EXTRACT_CASE_PROMPT.format(
-                case_study=case_study[:12000]
-            )}],
-        )
-        text = message.content[0].text.strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            result = json.loads(text[start:end])
-            result["_ok"] = bool(result.get("business_problems") or result.get("tasks"))
-            return result
-    except Exception as exc:
-        console.print(f"  [yellow]Case extraction error: {exc}[/yellow]")
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            message = await client.messages.create(
+                model=HAIKU_MODEL,
+                max_tokens=6000,
+                messages=[{"role": "user", "content": EXTRACT_CASE_PROMPT.format(
+                    case_study=case_study[:12000]
+                )}],
+            )
+            text = message.content[0].text.strip()
+
+            if message.stop_reason == "max_tokens":
+                console.print("  [yellow]Case extraction truncated — attempting repair[/yellow]")
+
+            result = _try_parse_json(text, container="object")
+            if result:
+                result["_ok"] = bool(result.get("business_problems") or result.get("tasks"))
+                return result
+            else:
+                last_error = "JSON parse failed"
+                console.print(f"  [yellow]Case JSON parse failed (attempt {attempt + 1})[/yellow]")
+
+        except Exception as exc:
+            last_error = str(exc)
+            console.print(f"  [yellow]Case extraction error (attempt {attempt + 1}): {exc}[/yellow]")
+
+        if attempt == 0:
+            await asyncio.sleep(1)
 
     return {"empresa": "", "rol": "", "business_problems": [],
             "tasks": [], "metricas_clave": [], "competitive_context": [],
-            "constraints": {}, "_ok": False}
+            "constraints": {}, "_ok": False, "_error": last_error}
 
 
 # ---------------------------------------------------------------------------
@@ -226,23 +305,43 @@ and explain in razonamiento what adjacent experience exists (if any)."""
 async def _map_experience(client: anthropic.AsyncAnthropic, profile: dict, caso: dict) -> list:
     """Step 0C: Map candidate experience to business problems using Haiku."""
     console.print("  [dim]Mapping experience to business problems...[/dim]")
-    try:
-        message = await client.messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=3000,
-            messages=[{"role": "user", "content": MAP_EXPERIENCE_PROMPT.format(
-                profile_json=json.dumps(profile, indent=2, ensure_ascii=False)[:6000],
-                problems_json=json.dumps(caso.get("business_problems", []), indent=2, ensure_ascii=False)[:4000],
-                tasks_json=json.dumps(caso.get("tasks", []), indent=2, ensure_ascii=False)[:3000],
-            )}],
-        )
-        text = message.content[0].text.strip()
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
-    except Exception as exc:
-        console.print(f"  [yellow]Mapping error: {exc}[/yellow]")
+
+    # Skip if there are no problems or tasks to map against
+    if not caso.get("business_problems") and not caso.get("tasks"):
+        console.print("  [yellow]No business problems or tasks to map against — skipping[/yellow]")
+        return []
+
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            message = await client.messages.create(
+                model=HAIKU_MODEL,
+                max_tokens=5000,
+                messages=[{"role": "user", "content": MAP_EXPERIENCE_PROMPT.format(
+                    profile_json=json.dumps(profile, indent=2, ensure_ascii=False)[:6000],
+                    problems_json=json.dumps(caso.get("business_problems", []), indent=2, ensure_ascii=False)[:4000],
+                    tasks_json=json.dumps(caso.get("tasks", []), indent=2, ensure_ascii=False)[:3000],
+                )}],
+            )
+            text = message.content[0].text.strip()
+
+            if message.stop_reason == "max_tokens":
+                console.print("  [yellow]Mapping truncated — attempting repair[/yellow]")
+
+            result = _try_parse_json(text, container="array")
+            if result is not None:
+                return result
+            else:
+                last_error = "JSON parse failed"
+                console.print(f"  [yellow]Mapping JSON parse failed (attempt {attempt + 1})[/yellow]")
+
+        except Exception as exc:
+            last_error = str(exc)
+            console.print(f"  [yellow]Mapping error (attempt {attempt + 1}): {exc}[/yellow]")
+
+        if attempt == 0:
+            await asyncio.sleep(1)
 
     return []
 
@@ -513,14 +612,16 @@ async def generate_application_streaming(case_study: str, jd_text: str,
     yield {"profile": profile}
 
     if not profile.get("_ok"):
-        yield {"warning": "Could not extract profile from CV. Document will be generated with limited personalization."}
+        err = profile.get("_error", "unknown")
+        yield {"warning": f"Could not extract profile from CV ({err}). Document will be generated with limited personalization."}
 
     # Step 0B: Extract case structure
     yield {"stage": "analyzing_case"}
     caso = await _extract_case(client, case_study)
 
     if not caso.get("_ok"):
-        yield {"warning": "Could not fully extract case structure. Some tasks may be missing."}
+        err = caso.get("_error", "unknown")
+        yield {"warning": f"Could not fully extract case structure ({err}). Some tasks may be missing."}
 
     # Step 0C: Map experience to tasks
     yield {"stage": "mapping"}
@@ -537,6 +638,9 @@ async def generate_application_streaming(case_study: str, jd_text: str,
 
     # Build work history reference (flat, citable list)
     work_history = _build_work_history_reference(profile)
+
+    # Strip internal pipeline keys before sending to Opus
+    clean_profile = {k: v for k, v in profile.items() if not k.startswith("_")}
 
     # Extract constraints
     constraints = caso.get("constraints", {})
@@ -555,7 +659,7 @@ async def generate_application_streaming(case_study: str, jd_text: str,
 
     # Build the final prompt with all structured context
     prompt = APPLY_USER.format(
-        profile_json=json.dumps(profile, indent=2, ensure_ascii=False)[:6000],
+        profile_json=json.dumps(clean_profile, indent=2, ensure_ascii=False)[:6000],
         work_history=work_history,
         case_study=case_study[:10000],
         problems_json=json.dumps(caso.get("business_problems", []), indent=2, ensure_ascii=False)[:5000],
