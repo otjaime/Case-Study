@@ -203,18 +203,17 @@ async def apply_stream(request: Request):
     company_name = body.get("company_name", "").strip()
     job_title = body.get("job_title", "").strip()
     cv_text = body.get("cv_text", "").strip()
-    experiences = body.get("experiences", "").strip()
 
-    if not case_study or not cv_text or not experiences:
+    if not case_study or not cv_text:
         return JSONResponse(
-            {"error": "Case study, CV, and experiences are required."},
+            {"error": "Case study and CV are required."},
             status_code=400,
         )
 
     async def event_stream():
         try:
             async for event in generate_application_streaming(
-                case_study, jd_text, company_name, job_title, cv_text, experiences
+                case_study, jd_text, company_name, job_title, cv_text
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:

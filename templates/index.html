@@ -379,22 +379,17 @@
         <!-- Apply section: appears after case generation -->
         <div class="apply-section" id="apply-section">
             <h2>Apply with this case</h2>
-            <p class="apply-subtitle">Turn this case into a proactive application document. Add 2-3 relevant experiences from your background.</p>
+            <p class="apply-subtitle">Transform this case into a proactive application document using your CV.</p>
 
             <form id="apply-form">
-                <div class="form-group">
-                    <label>Your Relevant Experiences</label>
-                    <textarea id="experiences" placeholder="2-3 concrete experiences that are analogous to the challenges in the case. Example:&#10;&#10;- Built the referral system from scratch, reaching 18% of new orders in 4 months&#10;- Reduced CAC by 35% by restructuring audience segmentation in Meta Ads&#10;- Designed the unit economics model that justified a 2x increase in paid budget"></textarea>
-                </div>
-
                 <button type="submit" class="apply-btn" id="apply-btn">Generate Application Document</button>
             </form>
         </div>
 
         <div class="apply-loading" id="apply-loading">
             <div class="spinner"></div>
-            <p class="loading-status">Generating application document...</p>
-            <p class="loading-detail" style="font-size:13px;color:#999;">Writing in your voice with your experiences...</p>
+            <p class="loading-status" id="apply-loading-status">Preparing...</p>
+            <p class="loading-detail" id="apply-loading-detail" style="font-size:13px;color:#999;"></p>
             <p class="word-count" id="apply-word-count"></p>
         </div>
 
@@ -664,10 +659,8 @@
         document.getElementById('apply-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const experiences = document.getElementById('experiences').value.trim();
             const cvText = storedCvText.trim();
             if (!cvText) { alert('No CV loaded. Go back and paste or upload your CV before generating.'); return; }
-            if (!experiences) { alert('Add at least one relevant experience.'); return; }
 
             const applySection = document.getElementById('apply-section');
             const applyLoading = document.getElementById('apply-loading');
@@ -675,14 +668,25 @@
             const applyOutput = document.getElementById('apply-output');
             const applyWordCount = document.getElementById('apply-word-count');
             const applyBtn = document.getElementById('apply-btn');
+            const applyStatus = document.getElementById('apply-loading-status');
+            const applyDetail = document.getElementById('apply-loading-detail');
 
             applyBtn.disabled = true;
             applySection.style.display = 'none';
             applyResult.style.display = 'none';
             applyLoading.style.display = 'block';
+            applyStatus.textContent = 'Preparing...';
+            applyDetail.textContent = '';
             applyMarkdown = '';
             applyOutput.innerHTML = '';
             applyWordCount.textContent = '';
+
+            const APPLY_STATUS = {
+                extracting_profile: 'Extracting profile from CV...',
+                analyzing_case: 'Analyzing case structure...',
+                mapping: 'Mapping your experience to case tasks...',
+                generating: 'Writing application document...',
+            };
 
             const payload = JSON.stringify({
                 case_study: rawMarkdown,
@@ -690,7 +694,6 @@
                 company_name: storedCompanyName,
                 job_title: storedJobTitle,
                 cv_text: cvText,
-                experiences: experiences,
             });
 
             try {
@@ -743,10 +746,30 @@
                             return;
                         }
 
-                        if (parsed.stage === 'applying') {
-                            applyLoading.style.display = 'none';
-                            applyResult.style.display = 'block';
-                            streaming = true;
+                        if (parsed.stage) {
+                            const msg = APPLY_STATUS[parsed.stage];
+                            if (msg) {
+                                applyStatus.textContent = msg;
+                            }
+                            if (parsed.stage === 'extracting_profile') {
+                                applyDetail.textContent = 'Step 1 of 4 — reading your CV...';
+                            } else if (parsed.stage === 'analyzing_case') {
+                                applyDetail.textContent = 'Step 2 of 4 — extracting case tasks and challenges...';
+                            } else if (parsed.stage === 'mapping') {
+                                applyDetail.textContent = 'Step 3 of 4 — matching your experience to each task...';
+                            } else if (parsed.stage === 'generating') {
+                                applyDetail.textContent = 'Step 4 of 4 — writing with structured context...';
+                                applyLoading.style.display = 'none';
+                                applyResult.style.display = 'block';
+                                streaming = true;
+                            }
+                        }
+
+                        if (parsed.profile) {
+                            const name = parsed.profile.nombre || '';
+                            if (name) {
+                                applyDetail.textContent = 'Profile extracted: ' + name;
+                            }
                         }
 
                         if (parsed.chunk) {

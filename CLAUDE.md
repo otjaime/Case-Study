@@ -108,12 +108,13 @@ The output reads as if it came from the company's hiring team:
 - `score_case_quality()` post-generation scoring via Haiku (specificity, realism, difficulty)
 
 ### applier.py
-- Transforms a generated case study into a personalized application document
-- Inputs: case study markdown + JD + company info + applicant's CV/resume + relevant experiences
-- Extracts applicant name, background, and expertise from CV to personalize voice
+- V2 pipeline: structured extraction before generation
+- Step 0A: `_extract_profile()` — Haiku extracts structured profile from CV (name, companies, skills, achievements)
+- Step 0B: `_extract_case()` — Haiku extracts case structure (challenges, tasks, metrics, criteria)
+- Step 0C: `_map_experience()` — Haiku maps candidate experience to each task (alto/medio/bajo/ninguno)
+- Final: `generate_application_streaming()` — Opus generates document with all structured context, streamed via SSE
 - 5-section structure: Opening → Diagnosis → What I'd Do → Non-obvious Insight → Close + Email
-- `generate_application_streaming()` streams via async generator for SSE
-- Uses Claude Opus for generation
+- Tasks with no matching experience use reasoning + benchmarks instead of fabricated experience
 
 ---
 
