@@ -278,6 +278,45 @@
             border-top: 1px solid #eee;
             margin: 32px 0;
         }
+
+        .file-upload {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .file-upload input[type="file"] {
+            font-size: 13px;
+            color: #555;
+        }
+
+        .file-upload input[type="file"]::file-selector-button {
+            padding: 6px 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .file-upload input[type="file"]::file-selector-button:hover {
+            background: #f5f5f5;
+        }
+
+        .file-name {
+            font-size: 12px;
+            color: #27ae60;
+            font-weight: 500;
+        }
+
+        .or-divider {
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -335,7 +374,12 @@
             <form id="apply-form">
                 <div class="form-group">
                     <label>Your CV / Resume</label>
-                    <textarea id="cv_text" placeholder="Paste your CV or resume here. This is used to extract your name, background, and expertise to write in your voice." style="min-height:160px;"></textarea>
+                    <div class="file-upload">
+                        <input type="file" id="cv_file" accept=".pdf,.txt,.doc,.docx,.md">
+                        <span class="file-name" id="cv-file-name"></span>
+                    </div>
+                    <p class="or-divider">or paste below</p>
+                    <textarea id="cv_text" placeholder="Paste your CV or resume text here..."></textarea>
                 </div>
 
                 <div class="form-group">
@@ -577,6 +621,43 @@
         });
 
         // --- Apply flow ---
+
+        // File upload handler: read file and populate CV textarea
+        document.getElementById('cv_file').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const nameEl = document.getElementById('cv-file-name');
+            const textarea = document.getElementById('cv_text');
+            nameEl.textContent = file.name;
+
+            if (file.type === 'application/pdf') {
+                // For PDFs, read as base64 and send to a small server endpoint,
+                // or fallback: ask user to paste. We'll read raw text extraction.
+                try {
+                    const text = await file.text();
+                    // PDFs read as text() give garbled output; check if readable
+                    const printable = text.replace(/[^\x20-\x7E\n\r\t]/g, '');
+                    if (printable.length > 200) {
+                        textarea.value = printable;
+                    } else {
+                        // Binary PDF — can't extract client-side without a library
+                        nameEl.textContent = file.name + ' (PDF attached — paste text below for best results)';
+                        textarea.placeholder = 'PDF detected but text extraction requires pasting. Copy your CV text here...';
+                    }
+                } catch {
+                    nameEl.textContent = file.name + ' (could not read)';
+                }
+            } else {
+                // Plain text, markdown, doc-like
+                try {
+                    const text = await file.text();
+                    textarea.value = text;
+                } catch {
+                    nameEl.textContent = file.name + ' (could not read)';
+                }
+            }
+        });
 
         document.getElementById('apply-form').addEventListener('submit', async (e) => {
             e.preventDefault();
