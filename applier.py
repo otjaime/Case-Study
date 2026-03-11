@@ -393,6 +393,23 @@ DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the problem with the strongest ex
 Lead with the most critical problem if your strongest match aligns with it. If not, lead with the \
 most critical problem but go deepest on your strongest match.
 
+JD COVERAGE RULE: The case study was built from the job description. Every task in the case represents \
+a JD requirement the hiring manager cares about. After writing your deep-dive solutions for each \
+business problem, CHECK: are there any task areas from the TASKS list that you haven't addressed \
+in your problem-by-problem discussion? If so, weave them in:
+- If a task area (e.g., "org design," "paid channel mix," "competitive positioning") is NOT covered \
+  by any business problem section, add a brief 2-3 sentence perspective on it within the most \
+  relevant problem section.
+- You do NOT need equal depth on every task area. But you MUST at least signal awareness and a point \
+  of view on every major capability the case tests. A hiring manager who sees zero mention of org \
+  design in a CGO document will wonder if the candidate can build a team.
+- For leadership roles (Director, VP, C-level, Head of): ALWAYS include your perspective on team \
+  structure and first hires, even if it's a single paragraph. This is non-negotiable for senior roles.
+
+COMPETITIVE RESPONSE RULE: If COMPETITIVE CONTEXT is provided above, at least ONE problem section \
+MUST directly address how to win against the named competitor(s). Don't just identify the competitive \
+threat — propose a specific counter-strategy (positioning, pricing, messaging, or distribution advantage).
+
 For each problem where nivel_match is "alto" or "medio":
 
 **[Problem framed as what you're fixing — active voice, specific]**
@@ -436,6 +453,14 @@ candidate's experience and this specific company's situation.
 
 If after genuine analysis no insight emerges that meets ALL criteria above, write a single \
 paragraph explaining the one thing you'd investigate in the first week and why.
+
+**Section 4B — First 30 Days (3-5 lines)**
+List exactly 3 things you'd do in the first 30 days — not vague intentions, but specific actions:
+- Decision 1: [concrete action] — because [reasoning tied to the most urgent problem]
+- Decision 2: [concrete action] — because [reasoning]
+- Decision 3: [concrete action] — because [reasoning]
+These should be DECISIONS, not "learn the business" or "meet the team." Show what you'd actually \
+change, build, or kill in month one based on the diagnosis above.
 
 **Section 5 — Close (3-4 lines)**
 No fluff. No "I look forward to your response."
