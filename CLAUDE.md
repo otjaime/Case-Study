@@ -104,17 +104,21 @@ The output reads as if it came from the company's hiring team:
 - Two-stage generation: Stage 1 (diagnosis) → Stage 2 (case construction)
 - Coverage-aware: prompt includes requirements_map + coverage_gaps
 - Business model templates inject model-specific metrics (B2B SaaS, DTC, marketplace, fintech)
+- 3 deep multi-skill tasks (not 4-5 shallow ones), ordered by business impact severity
+- Data integrity rules: metrics must come from research, tagged [PUBLIC]/[INFERRED]/[UNKNOWN]
 - `generate_case_study_streaming()` streams Stage 2 via async generator for SSE
 - `score_case_quality()` post-generation scoring via Haiku (specificity, realism, difficulty)
 
 ### applier.py
-- V2 pipeline: structured extraction before generation
-- Step 0A: `_extract_profile()` — Haiku extracts structured profile from CV (name, companies, skills, achievements)
-- Step 0B: `_extract_case()` — Haiku extracts case structure (challenges, tasks, metrics, criteria)
-- Step 0C: `_map_experience()` — Haiku maps candidate experience to each task (alto/medio/bajo/ninguno)
-- Final: `generate_application_streaming()` — Opus generates document with all structured context, streamed via SSE
-- 5-section structure: Opening → Diagnosis → What I'd Do → Non-obvious Insight → Close + Email
-- Tasks with no matching experience use reasoning + benchmarks instead of fabricated experience
+- V3 pipeline: diagnostic framing — case used as intelligence source, not homework to answer
+- Step 0A: `_extract_profile()` — Haiku extracts structured profile from CV (name, companies, skills, achievements with metrics)
+- Step 0B: `_extract_case()` — Haiku extracts business problems (with evidence, root causes, consequences), tasks, competitive context, constraints
+- Step 0C: `_map_experience()` — Haiku maps candidate experience to each business problem (alto/medio/bajo/ninguno) with transfer reasoning
+- Final: `generate_application_streaming()` — Opus generates diagnostic document organized by business problems, streamed via SSE
+- 5-section structure: Opening → What I See (diagnosis) → What I'd Do (solutions by problem) → Non-obvious Insight → Close + Email
+- Document reads as candidate's original analysis, NOT as a case study response
+- Depth distribution: 50/30/20 weighted by experience match strength
+- Problems with no matching experience use reasoning + benchmarks instead of fabricated experience
 
 ---
 

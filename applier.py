@@ -88,6 +88,7 @@ async def _extract_profile(client: anthropic.AsyncAnthropic, cv_text: str) -> di
 # ---------------------------------------------------------------------------
 
 EXTRACT_CASE_PROMPT = """Extract structured data from this business case study.
+Your job is to extract the BUSINESS PROBLEMS the company faces, not just the homework tasks.
 
 CASE STUDY:
 {case_study}
@@ -96,7 +97,15 @@ Respond ONLY with valid JSON matching this schema exactly:
 {{
   "empresa": "company name",
   "rol": "role title from the case",
-  "challenges_principales": ["challenge 1", "challenge 2", "challenge 3"],
+  "business_problems": [
+    {{
+      "problem": "1-sentence description of the core business problem",
+      "evidence": ["specific data point or metric that proves this problem exists", "..."],
+      "root_cause": "what's actually driving this problem (the systemic issue, not the symptom)",
+      "consequence_if_ignored": "what happens in 6-12 months if no one fixes this",
+      "related_tasks": [1, 2]
+    }}
+  ],
   "tasks": [
     {{
       "numero": 1,
@@ -107,24 +116,28 @@ Respond ONLY with valid JSON matching this schema exactly:
       "entregable": "what the candidate must produce (memo, model, framework, etc.)"
     }}
   ],
-  "metricas_clave": ["metric or data point from Data & Context section"],
-  "evaluation_criteria": ["criterion 1", "criterion 2"],
+  "metricas_clave": ["metric or data point from Data & Context section — include actual numbers"],
+  "competitive_context": ["key competitive dynamic or threat"],
   "constraints": {{
     "budget": "budget range if mentioned",
     "team": "team size if mentioned",
     "timeline": "timeline if mentioned",
+    "supply": "supply or capacity constraints if mentioned",
     "other": "any other constraints"
   }}
 }}
 
 EXTRACTION RULES:
-- Extract challenges from "The Challenge" section.
-- For each task in "Your Task": extract the title, required skills, tools, AND the KPI it measures.
-- For kpi_objetivo: identify WHICH metric this task is supposed to move (e.g., "CAC", "retention rate", "pipeline velocity").
+- Extract business_problems from "The Challenge" section — these are the REAL issues, not the tasks.
+  Each problem should be a genuine business tension (e.g., "channel cannibalization," "attribution blindness").
+- For evidence: pull specific numbers or data points that prove the problem exists.
+- For root_cause: identify the systemic driver — NOT just "we need to fix X."
+- For related_tasks: which task numbers address this problem?
+- Extract ALL tasks from "Your Task" section — they inform what skills to demonstrate.
+- For kpi_objetivo: identify WHICH metric this task aims to move.
 - Extract metrics from "Data & Context" — include actual numbers.
-- Extract constraints from "Constraints" section — budget, team, timeline.
-- Criteria from "Evaluation Criteria".
-- Include ALL tasks from "Your Task" section."""
+- Extract competitive threats as separate items.
+- Extract constraints from "Constraints" section — budget, team, timeline, supply."""
 
 
 async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> dict:
@@ -143,13 +156,13 @@ async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> di
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
             result = json.loads(text[start:end])
-            result["_ok"] = bool(result.get("tasks"))
+            result["_ok"] = bool(result.get("business_problems") or result.get("tasks"))
             return result
     except Exception as exc:
         console.print(f"  [yellow]Case extraction error: {exc}[/yellow]")
 
-    return {"empresa": "", "rol": "", "challenges_principales": [],
-            "tasks": [], "metricas_clave": [], "evaluation_criteria": [],
+    return {"empresa": "", "rol": "", "business_problems": [],
+            "tasks": [], "metricas_clave": [], "competitive_context": [],
             "constraints": {}, "_ok": False}
 
 
@@ -157,44 +170,53 @@ async def _extract_case(client: anthropic.AsyncAnthropic, case_study: str) -> di
 # Step 0C — Map experience to tasks
 # ---------------------------------------------------------------------------
 
-MAP_EXPERIENCE_PROMPT = """Map the candidate's experience to each task in the business case.
+MAP_EXPERIENCE_PROMPT = """Map the candidate's experience to each BUSINESS PROBLEM in the case.
+
+The case contains business problems (the real challenges the company faces) and tasks (the homework
+deliverables). Your job is to map the candidate's experience to the PROBLEMS, not the tasks.
+Use the tasks' required skills as context for what capabilities matter.
 
 CANDIDATE PROFILE:
 {profile_json}
 
-CASE TASKS:
+BUSINESS PROBLEMS:
+{problems_json}
+
+TASKS (for skill context only):
 {tasks_json}
 
-For each task, find the most relevant experience from the candidate's work history.
+For each business problem, find the most relevant experience from the candidate's work history.
 Consider THREE types of match — not just domain, but METHODOLOGY and PROBLEM TYPE:
 
 Respond ONLY with a JSON array:
 [
   {{
-    "task": "Task N — [title]",
+    "problem": "1-sentence problem description",
     "experiencia_relevante": {{
-      "empresa": "company name where they did something similar",
+      "empresa": "company name where they dealt with something analogous",
       "que_hice": "what they did that's analogous — be specific about the METHOD, not just the domain",
       "resultado": "metric or outcome — use exact numbers from CV, append [NO METRIC] if none"
     }},
     "nivel_match": "alto | medio | bajo | ninguno",
-    "razonamiento": "1-2 sentences explaining WHY this experience transfers to this task"
+    "razonamiento": "1-2 sentences explaining WHY this experience transfers to this specific business problem",
+    "skills_demonstrated": ["which skills from the related tasks this experience proves"]
   }}
 ]
 
 MATCHING RULES:
 - "alto": Direct match — same methodology AND similar problem, with measurable results.
-  Example: Task asks for "attribution model." Candidate built attribution models before → alto.
+  Example: Problem is "channel cannibalization between DTC and retail." Candidate managed DTC-to-retail transition → alto.
 - "medio": Methodological match — different domain but same analytical approach or framework.
-  Example: Task asks for "DTC attribution." Candidate built B2B attribution → medio (same method, different domain).
-  Example: Task asks for "reduce churn." Candidate optimized repeat purchase rate → medio (both retention problems).
+  Example: Problem is "no cross-channel attribution." Candidate built B2B attribution → medio (same method, different channel).
+  Example: Problem is "DTC retention declining." Candidate optimized repeat purchase rate in a different category → medio.
 - "bajo": Adjacent problem — candidate worked in the space but on different problems.
 - "ninguno": No transferable experience found — be honest.
 
 CRITICAL:
-- A candidate who did "ROAS evaluation" at a DTC brand has a DIRECT match to an "attribution" task — not just "medio."
-- A candidate who "optimized activation funnels" matches "improve onboarding completion" — same problem, different words.
-- Look at the KPI the task aims to improve (kpi_objetivo) and check if the candidate moved similar KPIs.
+- Match against the PROBLEM, not the task deliverable. A candidate who managed channel conflict has
+  experience with the cannibalization PROBLEM even if they never built a specific P&L model.
+- Look at the root cause — if the problem's root cause is "no unified commercial planning," match
+  against experience building cross-functional planning processes, not just the surface symptom.
 - "razonamiento" must explain the TRANSFER LOGIC, not just restate the match level.
 
 If nivel_match is "ninguno", set experiencia_relevante to {{"empresa": "", "que_hice": "", "resultado": ""}} \
@@ -202,14 +224,15 @@ and explain in razonamiento what adjacent experience exists (if any)."""
 
 
 async def _map_experience(client: anthropic.AsyncAnthropic, profile: dict, caso: dict) -> list:
-    """Step 0C: Map candidate experience to case tasks using Haiku."""
-    console.print("  [dim]Mapping experience to case tasks...[/dim]")
+    """Step 0C: Map candidate experience to business problems using Haiku."""
+    console.print("  [dim]Mapping experience to business problems...[/dim]")
     try:
         message = await client.messages.create(
             model=HAIKU_MODEL,
             max_tokens=3000,
             messages=[{"role": "user", "content": MAP_EXPERIENCE_PROMPT.format(
                 profile_json=json.dumps(profile, indent=2, ensure_ascii=False)[:6000],
+                problems_json=json.dumps(caso.get("business_problems", []), indent=2, ensure_ascii=False)[:4000],
                 tasks_json=json.dumps(caso.get("tasks", []), indent=2, ensure_ascii=False)[:3000],
             )}],
         )
@@ -260,15 +283,19 @@ APPLY_SYSTEM = """You are ghostwriting a proactive application document for a sp
 You will receive:
 1. The applicant's structured profile (extracted from their CV)
 2. A work history reference — the ONLY experiences you may cite
-3. The full case study and its extracted structure
-4. An experience-to-task mapping with match levels and transfer reasoning
-5. Case constraints (budget, team, timeline)
+3. The full case study (used as a source of company intelligence — NOT as homework to answer)
+4. Extracted business problems with evidence, root causes, and consequences
+5. An experience-to-problem mapping with match levels and transfer reasoning
+6. Competitive context and constraints
 
 THE DOCUMENT'S PURPOSE:
-This is NOT a cover letter. NOT a case study answer.
-It is a 4-6 page document the applicant sends WITHOUT BEING ASKED to get the first interview.
-The implicit message: "I diagnosed your problem, already solved it in another context, \
-and here's what I'd do in yours."
+This is NOT a cover letter. NOT a case study answer. NOT homework.
+It is a 4-6 page diagnostic document the applicant sends WITHOUT BEING ASKED to get the first interview.
+The implicit message: "I see what's happening at your company, I've dealt with this before, \
+and here's specifically what I'd do about it."
+
+The document should read as if the candidate independently researched the company and developed \
+an original analysis — NOT as if they're responding to a case study or assignment.
 
 VOICE AND TONE RULES:
 - First person of the candidate, direct
@@ -278,10 +305,13 @@ VOICE AND TONE RULES:
 - No cover letter phrases ("I'm pleased to present...", "With great enthusiasm...")
 - No listing skills like a CV
 - No speaking about the candidate in third person
+- No references to "the case," "the assignment," "the task," or anything that reveals \
+  this was generated from a structured case study
 
 FORMAT RULES:
 - No generic headers like "Introduction" or "Conclusion"
-- Tables only where the case has them and they add value to the solution
+- Section headers should be the BUSINESS PROBLEM, not "Task 1" or "Deliverable A"
+- Tables only where they genuinely add analytical value (P&L models, channel comparisons)
 - Max 3 bullets per section
 - Bold only for key terms, not decorative emphasis
 - Total length: 4-6 pages (~2000-2500 words)
@@ -293,7 +323,7 @@ INTEGRITY RULES:
 - Do NOT exaggerate results. If an achievement says [NO METRIC], do not add numbers.
 - Use the exact company names from the work history — never approximate or rename them."""
 
-APPLY_USER = """Generate a proactive application document using the structured context below.
+APPLY_USER = """Generate a proactive diagnostic document using the structured context below.
 
 APPLICANT PROFILE (extracted from CV):
 {profile_json}
@@ -301,16 +331,19 @@ APPLICANT PROFILE (extracted from CV):
 CANDIDATE'S WORK HISTORY (the ONLY experiences you may cite):
 {work_history}
 
-CASE STUDY (full):
+COMPANY INTELLIGENCE (from case study — use as research, NOT as homework to respond to):
 {case_study}
 
-CASE STRUCTURE (extracted):
-{caso_json}
+BUSINESS PROBLEMS IDENTIFIED:
+{problems_json}
 
-CASE CONSTRAINTS:
+COMPETITIVE CONTEXT:
+{competitive_json}
+
+CONSTRAINTS:
 {constraints_str}
 
-EXPERIENCE-TO-TASK MAPPING (with transfer reasoning):
+EXPERIENCE-TO-PROBLEM MAPPING (with transfer reasoning):
 {mapping_json}
 
 JOB DESCRIPTION:
@@ -321,74 +354,82 @@ JOB DESCRIPTION:
 DOCUMENT STRUCTURE:
 
 **Section 1 — Opening (half page)**
-Use the candidate's name from the profile. Reference the company from the case.
+Use the candidate's name from the profile. Reference the company.
 Pattern (adapt, don't copy literally):
-"[Company] is at a point where [diagnosis in 1 sentence from the main challenge].
-I've worked in analogous situations — [brief reference to 1 experience with nivel_match \
-'alto' from the mapping, citing the specific company and what was learned] — and what I \
-learned there is directly applicable to what the team faces today.
-I prepared this analysis without being asked because I believe there's a specific \
-opportunity worth articulating."
+"[Company] is at an inflection point: [diagnosis in 1 sentence from the most critical business problem].
+Having navigated analogous situations — [brief reference to 1 experience with nivel_match \
+'alto' from the mapping, citing the specific company and what was learned] — I see patterns here \
+that are worth surfacing.
+I put this together without being asked because there's a specific set of problems I think \
+I can help solve."
 
 Tone: direct, first person, no fluff.
 NO "I'm pleased to present...", NO "With great enthusiasm...", NO standard cover letter phrases.
+The opening must sound like someone who independently researched the company, NOT someone \
+responding to an assignment.
 
-**Section 2 — Diagnosis (1-1.5 pages)**
-Based on the case's Background + Challenge sections.
-Rewrite in the candidate's voice — NOT copy the case text. Minimum 40% wording change.
-Must sound like the candidate's OWN analysis, connecting what they see in the data to what \
-they've experienced elsewhere.
+**Section 2 — What I See (1-1.5 pages)**
+This is YOUR diagnosis — the candidate's original analysis of the company's situation.
+Do NOT paraphrase the case study text. Write this as if the candidate looked at public data, \
+talked to people in the industry, and formed their own view.
 
 Structure:
-- 1 paragraph: company's current situation with 2-3 real data points from metricas_clave
-- 2-3 bullets: critical challenges ordered by real impact (use challenges_principales)
-  For each challenge, briefly note what makes you recognize it (from your own experience)
-- 1 closing paragraph: the systemic tension behind the symptoms — the root problem, not the \
-  surface-level symptoms the case describes
+- 1 paragraph: the company's current inflection point with 2-3 data points from metricas_clave. \
+  Frame it as "here's what I observe from the outside" not "the case says."
+- 2-3 business problems, each as a short paragraph (NOT bullets). For each:
+  - State the problem as you see it (use evidence from the case but reframe in your own words)
+  - Name the root cause — the systemic issue, not the symptom
+  - Briefly note what makes you recognize this pattern (from your own experience — 1 sentence)
+- 1 closing paragraph: the single underlying tension that connects these problems. \
+  This is the candidate's thesis — the strategic insight that ties the symptoms together.
 
 **Section 3 — What I'd Do (2-3 pages)**
-CRITICAL: You MUST use the experience-to-task mapping to ground EVERY solution.
+CRITICAL: Organize this section by BUSINESS PROBLEM, not by task number or deliverable.
+Each sub-section header should be the problem you're solving (e.g., "Fixing the pricing architecture \
+before it collapses the margin stack" not "Task 1: Omnichannel Pricing").
 
-DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the task with the strongest experience match (alto), \
-~30% on the second strongest, ~20% on the remaining. Depth on your strongest match > breadth across all tasks.
-Tasks are ordered by business impact (first = most critical). If your strongest match aligns with the \
-highest-impact task, lead with it. If not, lead with the highest-impact task but go deepest on your strongest match.
+DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the problem with the strongest experience match (alto), \
+~30% on the second strongest, ~20% on the remaining. Depth on your strongest match > breadth.
+Lead with the most critical problem if your strongest match aligns with it. If not, lead with the \
+most critical problem but go deepest on your strongest match.
 
-For each task where nivel_match is "alto" or "medio":
+For each problem where nivel_match is "alto" or "medio":
 
-**[Challenge title — the real problem, not the task number]**
-What I'd do: [recommendation in 2-3 sentences with specific tools and logic from case data. \
-Must respect the constraints: budget of {constraints_budget}, team of {constraints_team}, \
-timeline of {constraints_timeline}.]
-Why it works: [reasoning grounded in case metrics — reference specific numbers from metricas_clave]
+**[Problem framed as what you're fixing — active voice, specific]**
+The approach: [specific recommendation in 2-3 sentences with concrete tools, frameworks, and logic. \
+Must respect the constraints: {constraints_str}.]
+Why this works: [reasoning grounded in company data — reference specific numbers from metricas_clave. \
+Connect to the root_cause and consequence_if_ignored from the problem extraction.]
 What I've already tested: [MUST cite the experience from the mapping — use the exact company name, \
 describe what was done, and the concrete result. Use the "razonamiento" from the mapping to \
-explain WHY this experience transfers to this specific task.]
+explain WHY this experience transfers to this specific problem. This is where you prove you're \
+not just theorizing — you've done a version of this before.]
 
-For tasks where nivel_match is "bajo":
+For problems where nivel_match is "bajo":
 
-**[Challenge title]**
-What I'd do: [specific recommendation]
-Why it works: [reasoning + case data]
-Related experience: [acknowledge the gap — "I haven't done exactly this, but at [company] I [related work] \
-which taught me [transferable principle]"]
+**[Problem framed as what you're fixing]**
+The approach: [specific recommendation with reasoning]
+Why this works: [logic + company data]
+Related experience: [acknowledge the gap — "I haven't solved exactly this, but at [company] I [related work] \
+which taught me [transferable principle that applies here]"]
 
-For tasks where nivel_match is "ninguno":
+For problems where nivel_match is "ninguno":
 
-**[Challenge title]**
-What I'd do: [specific recommendation grounded in case data]
-Reasoning: [logic + market benchmark if applicable — cite industry standards, not personal experience]
-What I'd need to validate: [honest question I'd ask in the first week — this shows self-awareness]
+**[Problem framed as what you're fixing]**
+The approach: [specific recommendation grounded in company data and market benchmarks]
+Reasoning: [logic + industry standards — cite benchmarks, not personal experience]
+What I'd need to validate: [honest question I'd investigate in the first week — this shows self-awareness \
+and signals you know what you don't know]
 
 **Section 4 — The non-obvious insight (half page)**
-Identify ONE assumption in the case that your experience contradicts or deepens.
+Identify ONE assumption about the company's situation that your experience contradicts or deepens.
 
 The insight must follow this pattern:
-"The case assumes [X is the bottleneck / Y is the metric that matters / Z is the right approach].
+"The conventional view would be [X is the bottleneck / Y is the metric that matters / Z is the right approach].
 But when I [specific experience from work history], I discovered [unexpected finding].
-Applied here, this means [specific practical consequence for the company]."
+Applied to [company], this means [specific practical consequence]."
 
-This must reference BOTH case data AND a real experience from the work history.
+This must reference BOTH company data AND a real experience from the work history.
 A good insight is debatable — reasonable people could disagree.
 Do NOT generate a generic observation. It must come from pattern recognition across the \
 candidate's experience and this specific company's situation.
@@ -398,7 +439,7 @@ paragraph explaining the one thing you'd investigate in the first week and why.
 
 **Section 5 — Close (3-4 lines)**
 No fluff. No "I look forward to your response."
-Pattern: "If this resonates, happy to go deeper on [most relevant topic from the case].
+Pattern: "If any of this resonates, happy to go deeper on [most relevant problem from the diagnosis].
 [Contact info from profile, or placeholder if not available]"
 
 ---
@@ -406,10 +447,10 @@ Pattern: "If this resonates, happy to go deeper on [most relevant topic from the
 After the document, generate separately:
 
 ### Email
-Subject: [Company] — unsolicited analysis
+Subject: [Company] — diagnostic + what I'd do in the first 90 days
 [Hiring manager name if in JD, or "Hi,"]
-I put together a diagnosis of the challenges [company] faces in [role area] \
-and how I'd approach them in the first 90 days. Attaching in case it's useful.
+I spent some time looking at where [company] is in its [relevant transition — e.g., "DTC-to-retail expansion"] \
+and put together a diagnosis of the challenges ahead and how I'd approach them. Attaching in case it's useful.
 [Candidate name from profile]
 [Contact from profile]
 
@@ -474,23 +515,27 @@ async def generate_application_streaming(case_study: str, jd_text: str,
 
     # Extract constraints
     constraints = caso.get("constraints", {})
-    constraints_budget = constraints.get("budget", "not specified")
-    constraints_team = constraints.get("team", "not specified")
-    constraints_timeline = constraints.get("timeline", "not specified")
-    constraints_str = f"Budget: {constraints_budget}\nTeam: {constraints_team}\nTimeline: {constraints_timeline}"
+    constraints_parts = []
+    if constraints.get("budget"):
+        constraints_parts.append(f"Budget: {constraints['budget']}")
+    if constraints.get("team"):
+        constraints_parts.append(f"Team: {constraints['team']}")
+    if constraints.get("timeline"):
+        constraints_parts.append(f"Timeline: {constraints['timeline']}")
+    if constraints.get("supply"):
+        constraints_parts.append(f"Supply: {constraints['supply']}")
     if constraints.get("other"):
-        constraints_str += f"\nOther: {constraints['other']}"
+        constraints_parts.append(f"Other: {constraints['other']}")
+    constraints_str = "\n".join(constraints_parts) if constraints_parts else "Not specified"
 
     # Build the final prompt with all structured context
     prompt = APPLY_USER.format(
         profile_json=json.dumps(profile, indent=2, ensure_ascii=False)[:6000],
         work_history=work_history,
         case_study=case_study[:10000],
-        caso_json=json.dumps(caso, indent=2, ensure_ascii=False)[:4000],
+        problems_json=json.dumps(caso.get("business_problems", []), indent=2, ensure_ascii=False)[:5000],
+        competitive_json=json.dumps(caso.get("competitive_context", []), indent=2, ensure_ascii=False)[:2000],
         constraints_str=constraints_str,
-        constraints_budget=constraints_budget,
-        constraints_team=constraints_team,
-        constraints_timeline=constraints_timeline,
         mapping_json=json.dumps(mapping, indent=2, ensure_ascii=False)[:4000],
         jd_text=jd_text[:6000],
     )
