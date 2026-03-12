@@ -1,566 +1,300 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <style>
-    /* ============================================================
-       PDF Deck — Landscape A4, presentation-style
-       Rendered server-side by WeasyPrint only.
-       ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    @page {
-        size: A4 landscape;
-        margin: 0;
-    }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
+@page {
+  size: A4;
+  margin: 20mm 22mm 20mm 22mm;
+}
 
-    body {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        color: #1a1a1a;
-        font-size: 13px;
-        line-height: 1.5;
-    }
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.65;
+  color: #1a1a1a;
+  width: 100%;
+}
 
-    /* Each .page is exactly one landscape A4 page */
-    .page {
-        width: 297mm;
-        height: 210mm;
-        page-break-after: always;
-        position: relative;
-        overflow: hidden;
-    }
+/* ---- COVER PAGE ---- */
+.cover-page {
+  background: #0f1923;
+  width: 210mm;
+  min-height: 297mm;
+  margin: -20mm -22mm;
+  padding: 60mm 48pt 0 48pt;
+  page-break-after: always;
+  position: relative;
+}
+.cover-accent {
+  width: 40pt; height: 3pt;
+  background: #3b82f6;
+  margin-bottom: 20pt;
+}
+.cover-title {
+  font-size: 32pt; font-weight: 700;
+  color: #ffffff; line-height: 1.2;
+  margin-bottom: 12pt;
+}
+.cover-subtitle {
+  font-size: 13pt; font-weight: 400;
+  color: #94a3b8; margin-bottom: 48pt;
+}
+.cover-author { margin-top: 32pt; }
+.cover-author-name {
+  font-size: 11pt; font-weight: 600;
+  color: #f1f5f9; margin-bottom: 4pt;
+}
+.cover-author-meta {
+  font-size: 9pt; color: #64748b; line-height: 1.8;
+}
+.cover-footer {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 3pt;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
 
-    .page:last-child {
-        page-break-after: avoid;
-    }
+/* ---- SECTION HEADERS (numbered) ---- */
+.section-header {
+  display: flex; align-items: flex-start; gap: 12pt;
+  margin-bottom: 16pt; padding-bottom: 10pt;
+  border-bottom: 1px solid #e2e8f0;
+  page-break-after: avoid;
+}
+.section-number {
+  font-size: 36pt; font-weight: 800;
+  color: #3b82f6; line-height: 1; flex-shrink: 0;
+}
+.section-label-group {
+  display: flex; flex-direction: column; justify-content: center;
+}
+.section-label {
+  font-size: 8pt; font-weight: 600; color: #94a3b8;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 2pt;
+}
+.section-title {
+  font-size: 16pt; font-weight: 700;
+  color: #0f1923; line-height: 1.2;
+}
 
-    /* ---- Page 1: Cover ---- */
-    .cover {
-        background: #0f1729;
-        color: #ffffff;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        padding: 50px 70px;
-    }
+/* ---- PLAIN SECTION HEADERS ---- */
+.plain-header {
+  font-size: 9pt; font-weight: 600; color: #3b82f6;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 6pt; margin-bottom: 16pt;
+  page-break-after: avoid;
+}
 
-    .cover .accent-line {
-        width: 60px;
-        height: 3px;
-        background: #4a9eff;
-        margin-bottom: 32px;
-    }
+/* ---- BODY TEXT ---- */
+p { margin-bottom: 9pt; text-align: left; orphans: 3; widows: 3; }
 
-    .cover h1 {
-        font-size: 38px;
-        font-weight: 700;
-        letter-spacing: -0.5px;
-        line-height: 1.15;
-        margin-bottom: 12px;
-    }
+/* ---- HEADINGS ---- */
+h2 {
+  font-size: 13pt; font-weight: 700; color: #0f1923;
+  margin-top: 18pt; margin-bottom: 6pt; page-break-after: avoid;
+}
+h3 {
+  font-size: 11pt; font-weight: 600; color: #1e293b;
+  margin-top: 12pt; margin-bottom: 4pt; page-break-after: avoid;
+}
 
-    .cover .subtitle {
-        font-size: 18px;
-        font-weight: 400;
-        color: #8899bb;
-        margin-bottom: 48px;
-    }
+/* ---- LISTS ---- */
+ul, ol { margin-left: 16pt; margin-bottom: 9pt; }
+li { margin-bottom: 5pt; text-align: left; }
 
-    .cover .meta {
-        font-size: 14px;
-        color: #667799;
-        line-height: 1.8;
-    }
+/* ---- INLINE ---- */
+strong { font-weight: 600; color: #0f1923; }
+em { font-style: italic; }
 
-    .cover .meta strong {
-        color: #aabbdd;
-    }
+/* ---- INSIGHT BLOCK ---- */
+.insight-block {
+  border-left: 3pt solid #f59e0b;
+  background: #fffbeb;
+  padding: 14pt 16pt;
+  margin: 16pt 0;
+  border-radius: 0 4pt 4pt 0;
+  page-break-inside: avoid;
+}
+.insight-block .insight-title {
+  font-size: 10pt; font-weight: 700;
+  color: #b45309; margin-bottom: 6pt;
+}
+.insight-block p { color: #44403c; margin-bottom: 6pt; }
+.insight-block p:last-child { margin-bottom: 0; }
 
-    .cover .bottom-bar {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #4a9eff 0%, #7c5cfc 50%, #4a9eff 100%);
-    }
+/* ---- HR ---- */
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 16pt 0; }
 
-    /* ---- Page 2: What I See (Diagnosis) ---- */
-    .diagnosis-page {
-        padding: 40px 60px;
-    }
+/* ---- TABLES ---- */
+table {
+  width: 100%; border-collapse: collapse;
+  margin: 14pt 0; font-size: 9.5pt; page-break-inside: avoid;
+}
+thead tr { background: #0f1923; color: #ffffff; }
+thead th {
+  padding: 7pt 8pt; text-align: left;
+  font-weight: 600; font-size: 9pt; letter-spacing: 0.02em;
+}
+tbody tr:nth-child(even) { background: #f8fafc; }
+tbody tr:nth-child(odd)  { background: #ffffff; }
+tbody td {
+  padding: 6pt 8pt; border-bottom: 1px solid #e2e8f0;
+  vertical-align: top; text-align: left;
+}
 
-    .page-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 28px;
-        padding-bottom: 12px;
-        border-bottom: 2px solid #e8e8e8;
-    }
+/* ---- EXPERIENCE MATCH ---- */
+.experience-match { page-break-inside: avoid; }
+.match-cards { display: flex; gap: 10pt; margin-bottom: 14pt; }
+.match-card {
+  flex: 1; background: #f8fafc;
+  border-radius: 6pt; padding: 14pt 10pt; text-align: center;
+}
+.match-number { font-size: 28pt; font-weight: 700; line-height: 1; margin-bottom: 4pt; }
+.match-number.strong   { color: #16a34a; }
+.match-number.method   { color: #f59e0b; }
+.match-number.adjacent { color: #f59e0b; }
+.match-number.reasoning { color: #94a3b8; }
+.match-label {
+  font-size: 7.5pt; font-weight: 600; color: #64748b;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.match-bar {
+  height: 6pt; border-radius: 3pt;
+  margin: 10pt 0 14pt; display: flex; overflow: hidden;
+}
+.match-bar-strong    { background: #16a34a; }
+.match-bar-method    { background: #f59e0b; }
+.match-bar-adjacent  { background: #fb923c; }
+.match-bar-reasoning { background: #e2e8f0; }
+.skill-tags { display: flex; flex-wrap: wrap; gap: 5pt; margin-top: 8pt; }
+.skill-tag {
+  font-size: 8pt; color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 12pt; padding: 2pt 8pt;
+}
 
-    .page-header .section-tag {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: #4a9eff;
-        margin-right: auto;
-    }
-
-    .page-header .company-tag {
-        font-size: 11px;
-        color: #999;
-    }
-
-    /* Stat cards row */
-    .stat-cards {
-        display: flex;
-        gap: 16px;
-        margin-bottom: 24px;
-    }
-
-    .stat-card {
-        flex: 1;
-        background: #f0f4ff;
-        border-left: 3px solid #4a9eff;
-        padding: 14px 16px;
-        border-radius: 0 6px 6px 0;
-    }
-
-    .stat-card .stat-value {
-        font-size: 14px;
-        font-weight: 600;
-        color: #0f1729;
-        line-height: 1.3;
-    }
-
-    .diagnosis-body {
-        column-count: 2;
-        column-gap: 32px;
-    }
-
-    .diagnosis-body p {
-        font-size: 12px;
-        margin-bottom: 10px;
-        text-align: justify;
-    }
-
-    .diagnosis-body strong {
-        color: #0f1729;
-    }
-
-    /* ---- Problem pages ---- */
-    .problem-page {
-        padding: 40px 60px;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .problem-title-bar {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid #e8e8e8;
-    }
-
-    .problem-number {
-        font-size: 36px;
-        font-weight: 700;
-        color: #4a9eff;
-        margin-right: 20px;
-        line-height: 1;
-        min-width: 50px;
-    }
-
-    .problem-title-text h2 {
-        font-size: 20px;
-        font-weight: 600;
-        color: #0f1729;
-        line-height: 1.2;
-        margin-bottom: 4px;
-    }
-
-    .problem-title-text .problem-tag {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #4a9eff;
-    }
-
-    .problem-body {
-        flex: 1;
-        column-count: 2;
-        column-gap: 32px;
-    }
-
-    .problem-body p {
-        font-size: 12px;
-        margin-bottom: 10px;
-        text-align: justify;
-    }
-
-    .problem-body strong {
-        color: #0f1729;
-    }
-
-    .problem-body h4 {
-        font-size: 13px;
-        font-weight: 600;
-        color: #333;
-        margin-top: 12px;
-        margin-bottom: 6px;
-    }
-
-    .problem-body ul {
-        padding-left: 16px;
-        margin-bottom: 10px;
-    }
-
-    .problem-body li {
-        font-size: 12px;
-        margin-bottom: 4px;
-    }
-
-    /* ---- Why Me page ---- */
-    .whyme-page {
-        padding: 40px 60px;
-    }
-
-    .match-grid {
-        display: flex;
-        gap: 24px;
-        margin-bottom: 32px;
-        margin-top: 20px;
-    }
-
-    .match-box {
-        flex: 1;
-        text-align: center;
-        padding: 20px;
-        border-radius: 8px;
-        background: #f8f8f8;
-    }
-
-    .match-box .match-number {
-        font-size: 36px;
-        font-weight: 700;
-        line-height: 1;
-        margin-bottom: 6px;
-    }
-
-    .match-box .match-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #666;
-    }
-
-    .match-box.alto .match-number { color: #27ae60; }
-    .match-box.medio .match-number { color: #f39c12; }
-    .match-box.bajo .match-number { color: #e67e22; }
-    .match-box.ninguno .match-number { color: #bbb; }
-
-    .match-bar-container {
-        margin-bottom: 28px;
-    }
-
-    .match-bar {
-        height: 12px;
-        border-radius: 6px;
-        background: #eee;
-        display: flex;
-        overflow: hidden;
-    }
-
-    .match-bar .bar-segment {
-        height: 100%;
-    }
-
-    .bar-alto { background: #27ae60; }
-    .bar-medio { background: #f39c12; }
-    .bar-bajo { background: #e67e22; }
-    .bar-ninguno { background: #ddd; }
-
-    .skills-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 16px;
-    }
-
-    .skill-pill {
-        font-size: 11px;
-        padding: 5px 14px;
-        background: #f0f4ff;
-        border: 1px solid #d0dcf0;
-        border-radius: 20px;
-        color: #3366aa;
-    }
-
-    /* ---- Close page ---- */
-    .close-page {
-        padding: 40px 60px;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .insight-box {
-        background: #fffbf0;
-        border-left: 3px solid #f39c12;
-        padding: 20px 24px;
-        border-radius: 0 8px 8px 0;
-        margin-bottom: 28px;
-    }
-
-    .insight-box h3 {
-        font-size: 14px;
-        font-weight: 600;
-        color: #b8860b;
-        margin-bottom: 8px;
-    }
-
-    .insight-box p {
-        font-size: 12px;
-        color: #555;
-    }
-
-    .thirty-days {
-        margin-bottom: 28px;
-    }
-
-    .thirty-days h3 {
-        font-size: 16px;
-        font-weight: 600;
-        color: #0f1729;
-        margin-bottom: 16px;
-    }
-
-    .day-item {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 12px;
-    }
-
-    .day-number {
-        font-size: 22px;
-        font-weight: 700;
-        color: #4a9eff;
-        min-width: 36px;
-        line-height: 1;
-        margin-right: 12px;
-    }
-
-    .day-text {
-        font-size: 12px;
-        flex: 1;
-    }
-
-    .day-text strong {
-        color: #0f1729;
-    }
-
-    .close-contact {
-        margin-top: auto;
-        padding-top: 20px;
-        border-top: 2px solid #e8e8e8;
-    }
-
-    .close-contact p {
-        font-size: 13px;
-        color: #555;
-        margin-bottom: 4px;
-    }
-
-    .close-contact .contact-info {
-        font-size: 14px;
-        font-weight: 500;
-        color: #0f1729;
-    }
-
-    /* Footer on every page except cover */
-    .page-footer {
-        position: absolute;
-        bottom: 20px;
-        left: 60px;
-        right: 60px;
-        display: flex;
-        justify-content: space-between;
-        font-size: 10px;
-        color: #bbb;
-    }
+/* ---- PAGE BREAK CONTROL ---- */
+h2, h3, .section-header, .plain-header { page-break-after: avoid; }
+table, .insight-block, ul, ol, .match-cards { page-break-inside: avoid; }
 </style>
 </head>
 <body>
 
-    <!-- Page 1: Cover -->
-    <div class="page cover">
-        <div class="accent-line"></div>
-        <h1>Diagnostic Brief:<br>{{ company_name }}</h1>
-        <p class="subtitle">{{ job_title }}</p>
-        <div class="meta">
-            <strong>{{ candidate_name }}</strong><br>
-            {% if current_role %}{{ current_role }}<br>{% endif %}
-            {% if contact %}{{ contact }}<br>{% endif %}
-            {{ date_str }}
-        </div>
-        <div class="bottom-bar"></div>
+  <!-- COVER PAGE -->
+  <div class="cover-page">
+    <div class="cover-accent"></div>
+    <div class="cover-title">Diagnostic Brief:<br>{{ company_name }}</div>
+    <div class="cover-subtitle">{{ job_title }}</div>
+    <div class="cover-author">
+      <div class="cover-author-name">{{ candidate_name }}</div>
+      <div class="cover-author-meta">
+        {% if current_role %}{{ current_role }}<br>{% endif %}
+        {% if contact %}{{ contact }}<br>{% endif %}
+        {{ date_str }}
+      </div>
     </div>
+    <div class="cover-footer"></div>
+  </div>
 
-    <!-- Page 2: What I See -->
-    {% if what_i_see_html %}
-    <div class="page diagnosis-page">
-        <div class="page-header">
-            <span class="section-tag">What I See</span>
-            <span class="company-tag">{{ company_name }} &mdash; {{ job_title }}</span>
-        </div>
+  <!-- WHAT I SEE -->
+  {% if what_i_see_html %}
+  <div class="plain-header">What I See</div>
+  {% if opening_html %}
+  {{ opening_html }}
+  {% endif %}
+  {{ what_i_see_html }}
+  <hr>
+  {% endif %}
 
-        {% if key_metrics %}
-        <div class="stat-cards">
-            {% for metric in key_metrics %}
-            <div class="stat-card">
-                <div class="stat-value">{{ metric }}</div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <div class="diagnosis-body">
-            {{ what_i_see_html }}
-        </div>
-
-        <div class="page-footer">
-            <span>{{ candidate_name }}</span>
-            <span>Confidential</span>
-        </div>
+  <!-- NUMBERED SECTIONS: What I'd Do -->
+  {% for solution in solutions %}
+  <div class="section-header">
+    <div class="section-number">{{ "%02d"|format(loop.index) }}</div>
+    <div class="section-label-group">
+      <div class="section-label">What I'd Do</div>
+      <div class="section-title">{{ solution.title }}</div>
     </div>
-    {% endif %}
+  </div>
+  {{ solution.body }}
+  <hr>
+  {% endfor %}
 
-    <!-- Pages 3+: One per problem/solution -->
-    {% for solution in solutions %}
-    <div class="page problem-page">
-        <div class="problem-title-bar">
-            <div class="problem-number">{{ "%02d"|format(loop.index) }}</div>
-            <div class="problem-title-text">
-                <span class="problem-tag">What I'd Do</span>
-                <h2>{{ solution.title }}</h2>
-            </div>
-        </div>
-
-        <div class="problem-body">
-            {{ solution.body }}
-        </div>
-
-        <div class="page-footer">
-            <span>{{ candidate_name }}</span>
-            <span>{{ loop.index }} / {{ solutions|length }}</span>
-        </div>
+  <!-- EXPERIENCE MATCH -->
+  {% if match_data %}
+  <div class="plain-header">Experience Match</div>
+  <div class="experience-match">
+    <div class="match-cards">
+      <div class="match-card">
+        <div class="match-number strong">{{ match_data.alto }}</div>
+        <div class="match-label">Strong Match</div>
+      </div>
+      <div class="match-card">
+        <div class="match-number method">{{ match_data.medio }}</div>
+        <div class="match-label">Method Match</div>
+      </div>
+      <div class="match-card">
+        <div class="match-number adjacent">{{ match_data.bajo }}</div>
+        <div class="match-label">Adjacent</div>
+      </div>
+      <div class="match-card">
+        <div class="match-number reasoning">{{ match_data.ninguno }}</div>
+        <div class="match-label">Reasoning Only</div>
+      </div>
     </div>
-    {% endfor %}
-
-    <!-- Why Me page -->
-    {% if match_data %}
-    <div class="page whyme-page">
-        <div class="page-header">
-            <span class="section-tag">Experience Match</span>
-            <span class="company-tag">{{ company_name }}</span>
-        </div>
-
-        <div class="match-grid">
-            <div class="match-box alto">
-                <div class="match-number">{{ match_data.alto }}</div>
-                <div class="match-label">Strong Match</div>
-            </div>
-            <div class="match-box medio">
-                <div class="match-number">{{ match_data.medio }}</div>
-                <div class="match-label">Method Match</div>
-            </div>
-            <div class="match-box bajo">
-                <div class="match-number">{{ match_data.bajo }}</div>
-                <div class="match-label">Adjacent</div>
-            </div>
-            <div class="match-box ninguno">
-                <div class="match-number">{{ match_data.ninguno }}</div>
-                <div class="match-label">Reasoning Only</div>
-            </div>
-        </div>
-
-        <div class="match-bar-container">
-            <div class="match-bar">
-                {% if match_data.alto %}
-                <div class="bar-segment bar-alto" style="width: {{ (match_data.alto / total_matches * 100)|round }}%"></div>
-                {% endif %}
-                {% if match_data.medio %}
-                <div class="bar-segment bar-medio" style="width: {{ (match_data.medio / total_matches * 100)|round }}%"></div>
-                {% endif %}
-                {% if match_data.bajo %}
-                <div class="bar-segment bar-bajo" style="width: {{ (match_data.bajo / total_matches * 100)|round }}%"></div>
-                {% endif %}
-                {% if match_data.ninguno %}
-                <div class="bar-segment bar-ninguno" style="width: {{ (match_data.ninguno / total_matches * 100)|round }}%"></div>
-                {% endif %}
-            </div>
-        </div>
-
-        {% if skills %}
-        <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">Key Skills</h3>
-        <div class="skills-grid">
-            {% for skill in skills %}
-            <span class="skill-pill">{{ skill }}</span>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <div class="page-footer">
-            <span>{{ candidate_name }}</span>
-            <span>Experience Overview</span>
-        </div>
+    <div class="match-bar">
+      {% if match_data.alto %}
+      <div class="match-bar-strong" style="flex: {{ match_data.alto }}"></div>
+      {% endif %}
+      {% if match_data.medio %}
+      <div class="match-bar-method" style="flex: {{ match_data.medio }}"></div>
+      {% endif %}
+      {% if match_data.bajo %}
+      <div class="match-bar-adjacent" style="flex: {{ match_data.bajo }}"></div>
+      {% endif %}
+      {% if match_data.ninguno %}
+      <div class="match-bar-reasoning" style="flex: {{ match_data.ninguno }}"></div>
+      {% endif %}
+    </div>
+    {% if skills %}
+    <strong>Key Skills</strong>
+    <div class="skill-tags">
+      {% for skill in skills %}
+      <span class="skill-tag">{{ skill }}</span>
+      {% endfor %}
     </div>
     {% endif %}
+  </div>
+  <hr>
+  {% endif %}
 
-    <!-- Close page -->
-    <div class="page close-page">
-        <div class="page-header">
-            <span class="section-tag">Next Steps</span>
-            <span class="company-tag">{{ company_name }}</span>
-        </div>
+  <!-- NEXT STEPS -->
+  <div class="plain-header">Next Steps</div>
 
-        {% if insight_html %}
-        <div class="insight-box">
-            <h3>The Non-Obvious Insight</h3>
-            {{ insight_html }}
-        </div>
-        {% endif %}
+  {% if insight_html %}
+  <div class="insight-block">
+    <div class="insight-title">The Non-Obvious Insight</div>
+    {{ insight_html }}
+  </div>
+  {% endif %}
 
-        {% if first_30_html %}
-        <div class="thirty-days">
-            <h3>First 30 Days</h3>
-            {{ first_30_html }}
-        </div>
-        {% endif %}
+  {% if first_30_html %}
+  <h2>First 30 Days</h2>
+  {{ first_30_html }}
+  {% endif %}
 
-        {% if close_html %}
-        <div style="margin-bottom: 20px;">
-            {{ close_html }}
-        </div>
-        {% endif %}
+  {% if close_html %}
+  {{ close_html }}
+  {% endif %}
 
-        <div class="close-contact">
-            <p class="contact-info">{{ candidate_name }}</p>
-            {% if current_role %}<p>{{ current_role }}</p>{% endif %}
-            {% if contact %}<p class="contact-info">{{ contact }}</p>{% endif %}
-        </div>
-
-        <div class="page-footer">
-            <span>{{ candidate_name }}</span>
-            <span>{{ date_str }}</span>
-        </div>
-    </div>
+  <hr>
+  {% if not close_html %}
+  <p><strong>{{ candidate_name }}</strong>{% if current_role %}<br>{{ current_role }}{% endif %}{% if contact %}<br>{{ contact }}{% endif %}</p>
+  {% endif %}
 
 </body>
 </html>
