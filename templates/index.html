@@ -455,7 +455,7 @@
             <div class="apply-quality-bar" id="apply-quality-bar" style="display:none;"></div>
             <div class="case-study" id="apply-output"></div>
             <div class="deck-actions" id="deck-actions" style="display:none; margin-top: 16px;">
-                <button class="deck-btn" id="deck-btn">Download PDF Deck</button>
+                <button class="deck-btn" id="deck-btn">Download Slide Deck</button>
             </div>
 
             <!-- Video explainer section -->
@@ -955,6 +955,7 @@
                         company_name: storedCompanyName,
                         job_title: storedJobTitle,
                         mapping_quality: storedMappingQuality || {},
+                        format: 'slides',
                     }),
                 });
 
@@ -967,14 +968,14 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'diagnostic-' + (storedCompanyName || 'company').toLowerCase().replace(/\s+/g, '-') + '.pdf';
+                a.download = 'slides-' + (storedCompanyName || 'company').toLowerCase().replace(/\s+/g, '-') + '.pdf';
                 a.click();
                 URL.revokeObjectURL(url);
             } catch (err) {
                 alert('PDF export failed: ' + err.message);
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Download PDF Deck';
+                btn.textContent = 'Download Slide Deck';
             }
         });
 

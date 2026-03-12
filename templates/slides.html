@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@page {
+  size: 254mm 143mm;
+  margin: 0;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* -------------------------------------------------- */
+/* Base slide                                         */
+/* -------------------------------------------------- */
+.slide {
+  width: 254mm;
+  height: 143mm;
+  padding: 14mm 20mm;
+  page-break-after: always;
+  position: relative;
+  overflow: hidden;
+}
+.slide:last-child { page-break-after: auto; }
+
+.footer-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2.5pt;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+
+.page-num {
+  position: absolute;
+  bottom: 7mm;
+  right: 12mm;
+  font-size: 7.5pt;
+  color: #94a3b8;
+}
+
+/* -------------------------------------------------- */
+/* Slide 1: Cover                                     */
+/* -------------------------------------------------- */
+.slide-cover {
+  background: #0f1923;
+  padding: 28mm 24mm 20mm 24mm;
+}
+.cover-accent {
+  width: 36pt;
+  height: 3pt;
+  background: #3b82f6;
+  margin-bottom: 18pt;
+}
+.cover-company {
+  font-size: 34pt;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.15;
+  margin-bottom: 8pt;
+}
+.cover-role {
+  font-size: 14pt;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-bottom: 36pt;
+}
+.cover-divider {
+  width: 100%;
+  height: 1px;
+  background: #1e293b;
+  margin-bottom: 16pt;
+}
+.cover-candidate {
+  font-size: 12pt;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.cover-meta {
+  font-size: 8.5pt;
+  color: #64748b;
+  margin-top: 4pt;
+}
+.cover-date {
+  position: absolute;
+  bottom: 14mm;
+  right: 24mm;
+  font-size: 8.5pt;
+  color: #475569;
+}
+
+/* -------------------------------------------------- */
+/* Slide 2: Situation (stat cards)                    */
+/* -------------------------------------------------- */
+.slide-label {
+  font-size: 8pt;
+  font-weight: 600;
+  color: #3b82f6;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 6pt;
+}
+.slide-headline {
+  font-size: 18pt;
+  font-weight: 700;
+  color: #0f1923;
+  line-height: 1.3;
+  margin-bottom: 18pt;
+  max-width: 90%;
+}
+.stat-grid {
+  display: flex;
+  gap: 10pt;
+}
+.stat-card {
+  flex: 1;
+  background: #f8fafc;
+  border-radius: 5pt;
+  padding: 14pt 12pt;
+  border-top: 3pt solid #3b82f6;
+}
+.stat-value {
+  font-size: 26pt;
+  font-weight: 800;
+  color: #0f1923;
+  line-height: 1;
+  margin-bottom: 4pt;
+}
+.stat-label {
+  font-size: 8.5pt;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 3pt;
+}
+.stat-context {
+  font-size: 7.5pt;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+/* -------------------------------------------------- */
+/* Slides 3-5: Solution slides                        */
+/* -------------------------------------------------- */
+.sol-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 14pt;
+}
+.sol-number {
+  font-size: 38pt;
+  font-weight: 800;
+  color: #e2e8f0;
+  line-height: 1;
+  margin-right: 12pt;
+  min-width: 44pt;
+}
+.sol-title-group {
+  padding-top: 4pt;
+}
+.sol-tag {
+  font-size: 7pt;
+  font-weight: 600;
+  color: #3b82f6;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 3pt;
+}
+.sol-headline {
+  font-size: 17pt;
+  font-weight: 700;
+  color: #0f1923;
+  line-height: 1.25;
+}
+.sol-body {
+  display: flex;
+  gap: 16pt;
+  margin-top: 4pt;
+}
+.sol-left { flex: 3; }
+.sol-right { flex: 2; }
+
+.sol-bullets {
+  list-style: none;
+  padding: 0;
+}
+.sol-bullets li {
+  font-size: 10.5pt;
+  color: #334155;
+  padding: 7pt 0 7pt 16pt;
+  border-bottom: 1px solid #f1f5f9;
+  position: relative;
+  line-height: 1.4;
+}
+.sol-bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12pt;
+  width: 5pt;
+  height: 5pt;
+  background: #3b82f6;
+  border-radius: 50%;
+}
+
+.metric-card {
+  background: #0f1923;
+  color: #ffffff;
+  border-radius: 5pt;
+  padding: 14pt;
+  margin-bottom: 10pt;
+}
+.metric-value {
+  font-size: 22pt;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4pt;
+}
+.metric-label {
+  font-size: 7.5pt;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.match-indicator {
+  font-size: 8.5pt;
+  font-weight: 600;
+  padding: 4pt 0;
+  display: flex;
+  align-items: center;
+}
+.match-dot {
+  display: inline-block;
+  width: 7pt;
+  height: 7pt;
+  border-radius: 50%;
+  margin-right: 5pt;
+}
+.match-alto .match-dot { background: #16a34a; }
+.match-alto { color: #16a34a; }
+.match-medio .match-dot { background: #f59e0b; }
+.match-medio { color: #f59e0b; }
+.match-bajo .match-dot { background: #fb923c; }
+.match-bajo { color: #fb923c; }
+.match-ninguno .match-dot { background: #94a3b8; }
+.match-ninguno { color: #94a3b8; }
+
+.evidence-line {
+  font-size: 8pt;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 6pt;
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------- */
+/* Slide 6: Experience Match                          */
+/* -------------------------------------------------- */
+.match-grid {
+  display: flex;
+  gap: 10pt;
+  margin-bottom: 12pt;
+}
+.match-card {
+  flex: 1;
+  text-align: center;
+  padding: 12pt 8pt;
+  background: #f8fafc;
+  border-radius: 5pt;
+  border-top: 3pt solid #94a3b8;
+}
+.match-card-alto { border-top-color: #16a34a; }
+.match-card-medio { border-top-color: #f59e0b; }
+.match-card-bajo { border-top-color: #fb923c; }
+.match-card-ninguno { border-top-color: #94a3b8; }
+
+.match-card-num {
+  font-size: 28pt;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4pt;
+}
+.match-card-alto .match-card-num { color: #16a34a; }
+.match-card-medio .match-card-num { color: #f59e0b; }
+.match-card-bajo .match-card-num { color: #fb923c; }
+.match-card-ninguno .match-card-num { color: #94a3b8; }
+
+.match-card-label {
+  font-size: 7pt;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.match-bar-container {
+  height: 6pt;
+  border-radius: 3pt;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 14pt;
+}
+.match-bar-seg { height: 100%; }
+.match-bar-alto { background: #16a34a; }
+.match-bar-medio { background: #f59e0b; }
+.match-bar-bajo { background: #fb923c; }
+.match-bar-ninguno { background: #cbd5e1; }
+
+.skills-label {
+  font-size: 9pt;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8pt;
+}
+.skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5pt;
+}
+.skill-tag {
+  font-size: 7.5pt;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 10pt;
+  padding: 3pt 8pt;
+  background: #ffffff;
+}
+
+/* -------------------------------------------------- */
+/* Slide 7: Non-obvious Insight                       */
+/* -------------------------------------------------- */
+.slide-insight {
+  padding-top: 32mm;
+}
+.insight-claim {
+  font-size: 18pt;
+  font-weight: 700;
+  color: #0f1923;
+  line-height: 1.4;
+  border-left: 3pt solid #f59e0b;
+  padding-left: 16pt;
+  margin-bottom: 14pt;
+  max-width: 85%;
+}
+.insight-implication {
+  font-size: 11pt;
+  color: #64748b;
+  padding-left: 19pt;
+  max-width: 80%;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------- */
+/* Slide 8: First 30 Days                             */
+/* -------------------------------------------------- */
+.days-grid {
+  display: flex;
+  gap: 12pt;
+  margin-top: 8pt;
+}
+.day-card {
+  flex: 1;
+  background: #f8fafc;
+  border-radius: 5pt;
+  padding: 16pt 14pt;
+  border-left: 3pt solid #3b82f6;
+}
+.day-num {
+  font-size: 8pt;
+  font-weight: 700;
+  color: #3b82f6;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8pt;
+}
+.day-action {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #0f1923;
+  line-height: 1.3;
+  margin-bottom: 6pt;
+}
+.day-reason {
+  font-size: 8.5pt;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------- */
+/* Slide 9: Close                                     */
+/* -------------------------------------------------- */
+.slide-close {
+  background: #0f1923;
+  padding: 32mm 24mm 20mm 24mm;
+}
+.close-cta {
+  font-size: 11pt;
+  color: #94a3b8;
+  margin-bottom: 24pt;
+  line-height: 1.5;
+  max-width: 75%;
+}
+.close-name {
+  font-size: 20pt;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4pt;
+}
+.close-role {
+  font-size: 10pt;
+  color: #94a3b8;
+  margin-bottom: 2pt;
+}
+.close-contact {
+  font-size: 10pt;
+  color: #64748b;
+}
+</style>
+</head>
+<body>
+
+<!-- ================================================================ -->
+<!-- SLIDE 1: Cover                                                   -->
+<!-- ================================================================ -->
+<div class="slide slide-cover">
+  <div class="cover-accent"></div>
+  <div class="cover-company">{{ company_name }}</div>
+  <div class="cover-role">{{ job_title }}</div>
+  <div class="cover-divider"></div>
+  <div class="cover-candidate">{{ candidate_name }}</div>
+  <div class="cover-meta">
+    {% if current_role %}{{ current_role }}{% endif %}
+    {% if current_role and contact %} &middot; {% endif %}
+    {% if contact %}{{ contact }}{% endif %}
+  </div>
+  <div class="cover-date">{{ date_str }}</div>
+  <div class="footer-bar"></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SLIDE 2: The Situation                                           -->
+<!-- ================================================================ -->
+<div class="slide">
+  <div class="slide-label">What I See</div>
+  {% if slide_data.situation_summary %}
+  <div class="slide-headline">{{ slide_data.situation_summary }}</div>
+  {% endif %}
+  {% if slide_data.stat_cards %}
+  <div class="stat-grid">
+    {% for card in slide_data.stat_cards %}
+    <div class="stat-card">
+      <div class="stat-value">{{ card.value }}</div>
+      <div class="stat-label">{{ card.label }}</div>
+      {% if card.context %}<div class="stat-context">{{ card.context }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="page-num">2</div>
+  <div class="footer-bar"></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SLIDES 3-5: Solution slides                                      -->
+<!-- ================================================================ -->
+{% for sol in slide_data.solutions %}
+<div class="slide">
+  <div class="sol-header">
+    <div class="sol-number">{{ "%02d"|format(loop.index) }}</div>
+    <div class="sol-title-group">
+      <div class="sol-tag">What I'd Do</div>
+      <div class="sol-headline">{{ sol.headline }}</div>
+    </div>
+  </div>
+  <div class="sol-body">
+    <div class="sol-left">
+      {% if sol.bullets %}
+      <ul class="sol-bullets">
+        {% for bullet in sol.bullets %}
+        <li>{{ bullet }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <div class="sol-right">
+      {% if sol.key_metric and sol.key_metric.value %}
+      <div class="metric-card">
+        <div class="metric-value">{{ sol.key_metric.value }}</div>
+        <div class="metric-label">{{ sol.key_metric.label }}</div>
+      </div>
+      {% endif %}
+      {% if sol.match_level %}
+      <div class="match-indicator match-{{ sol.match_level }}">
+        <span class="match-dot"></span>
+        {{ sol.match_level | replace('alto','Strong Match') | replace('medio','Method Match') | replace('bajo','Adjacent') | replace('ninguno','Reasoning Only') }}
+      </div>
+      {% endif %}
+      {% if sol.evidence_line %}
+      <div class="evidence-line">{{ sol.evidence_line }}</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-num">{{ loop.index + 2 }}</div>
+  <div class="footer-bar"></div>
+</div>
+{% endfor %}
+
+<!-- ================================================================ -->
+<!-- SLIDE 6: Experience Match                                        -->
+<!-- ================================================================ -->
+{% set total = (match_data.alto or 0) + (match_data.medio or 0) + (match_data.bajo or 0) + (match_data.ninguno or 0) %}
+<div class="slide">
+  <div class="slide-label">Experience Match</div>
+  <div class="slide-headline" style="font-size:15pt; margin-bottom:14pt;">How my experience maps to your challenges</div>
+
+  <div class="match-grid">
+    <div class="match-card match-card-alto">
+      <div class="match-card-num">{{ match_data.alto or 0 }}</div>
+      <div class="match-card-label">Strong Match</div>
+    </div>
+    <div class="match-card match-card-medio">
+      <div class="match-card-num">{{ match_data.medio or 0 }}</div>
+      <div class="match-card-label">Method Match</div>
+    </div>
+    <div class="match-card match-card-bajo">
+      <div class="match-card-num">{{ match_data.bajo or 0 }}</div>
+      <div class="match-card-label">Adjacent</div>
+    </div>
+    <div class="match-card match-card-ninguno">
+      <div class="match-card-num">{{ match_data.ninguno or 0 }}</div>
+      <div class="match-card-label">Reasoning Only</div>
+    </div>
+  </div>
+
+  {% if total > 0 %}
+  <div class="match-bar-container">
+    {% if match_data.alto %}<div class="match-bar-seg match-bar-alto" style="width:{{ (match_data.alto / total * 100)|round|int }}%"></div>{% endif %}
+    {% if match_data.medio %}<div class="match-bar-seg match-bar-medio" style="width:{{ (match_data.medio / total * 100)|round|int }}%"></div>{% endif %}
+    {% if match_data.bajo %}<div class="match-bar-seg match-bar-bajo" style="width:{{ (match_data.bajo / total * 100)|round|int }}%"></div>{% endif %}
+    {% if match_data.ninguno %}<div class="match-bar-seg match-bar-ninguno" style="width:{{ (match_data.ninguno / total * 100)|round|int }}%"></div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if skills %}
+  <div class="skills-label">Key Skills</div>
+  <div class="skill-tags">
+    {% for skill in skills %}
+    <span class="skill-tag">{{ skill }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="page-num">{{ (slide_data.solutions|length) + 3 }}</div>
+  <div class="footer-bar"></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SLIDE 7: Non-obvious Insight                                     -->
+<!-- ================================================================ -->
+{% if slide_data.insight and slide_data.insight.claim %}
+<div class="slide slide-insight">
+  <div class="slide-label">The Non-Obvious Insight</div>
+  <div class="insight-claim">{{ slide_data.insight.claim }}</div>
+  {% if slide_data.insight.implication %}
+  <div class="insight-implication">{{ slide_data.insight.implication }}</div>
+  {% endif %}
+  <div class="page-num">{{ (slide_data.solutions|length) + 4 }}</div>
+  <div class="footer-bar"></div>
+</div>
+{% endif %}
+
+<!-- ================================================================ -->
+<!-- SLIDE 8: First 30 Days                                           -->
+<!-- ================================================================ -->
+{% if slide_data.first_30_days %}
+<div class="slide">
+  <div class="slide-label">First 30 Days</div>
+  <div class="slide-headline" style="font-size:15pt; margin-bottom:12pt;">Three decisions I'd make immediately</div>
+  <div class="days-grid">
+    {% for item in slide_data.first_30_days %}
+    <div class="day-card">
+      <div class="day-num">Decision {{ loop.index }}</div>
+      <div class="day-action">{{ item.action }}</div>
+      {% if item.reason %}<div class="day-reason">{{ item.reason }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="page-num">{{ (slide_data.solutions|length) + 5 }}</div>
+  <div class="footer-bar"></div>
+</div>
+{% endif %}
+
+<!-- ================================================================ -->
+<!-- SLIDE 9: Close                                                   -->
+<!-- ================================================================ -->
+<div class="slide slide-close">
+  <div class="cover-accent"></div>
+  <div class="close-cta">I'd welcome the chance to go deeper on any of these areas.</div>
+  <div class="close-name">{{ candidate_name }}</div>
+  {% if current_role %}<div class="close-role">{{ current_role }}</div>{% endif %}
+  {% if contact %}<div class="close-contact">{{ contact }}</div>{% endif %}
+  <div class="footer-bar"></div>
+</div>
+
+</body>
+</html>

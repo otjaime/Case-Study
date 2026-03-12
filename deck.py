@@ -1,9 +1,17 @@
-"""Generates a styled PDF document from a diagnostic markdown."""
+"""Generates styled PDF documents from diagnostic markdown.
+
+Two output formats:
+  - A4 document: generate_deck_pdf() — text-heavy, standalone reading
+  - 16:9 slides:  generate_slide_deck_pdf() — minimal text, visual support for video
+"""
 
 import re
+import json
+import asyncio
 from datetime import date
 from pathlib import Path
 
+import anthropic
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 
@@ -525,4 +533,372 @@ def generate_deck_pdf(markdown: str, profile: dict, company_name: str,
     # Render to PDF
     pdf_bytes = HTML(string=html_content).write_pdf()
     console.print("[bold green]PDF document generated[/bold green]")
+    return pdf_bytes
+
+
+# ---------------------------------------------------------------------------
+# Slide deck: Haiku condensation + 16:9 PDF
+# ---------------------------------------------------------------------------
+
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+CONDENSE_FOR_SLIDES_PROMPT = """Condense this diagnostic document into slide-ready data.
+You are extracting KEY DATA POINTS and SHORT HEADLINES — not summarizing paragraphs.
+
+DIAGNOSTIC DOCUMENT:
+{markdown}
+
+Respond ONLY with valid JSON matching this schema:
+{{
+  "situation_summary": "One sentence (max 15 words) capturing the company's inflection point",
+  "stat_cards": [
+    {{
+      "value": "the number, percentage, or dollar amount (e.g. '$96', '70%', '5x')",
+      "label": "what the number measures (max 4 words)",
+      "context": "why it matters (max 8 words)"
+    }}
+  ],
+  "solutions": [
+    {{
+      "headline": "what you are fixing — active voice, max 8 words",
+      "bullets": ["action point max 12 words", "action point max 12 words", "action point max 12 words"],
+      "key_metric": {{
+        "value": "the single most important number for this problem",
+        "label": "what it measures (max 5 words)"
+      }},
+      "match_level": "alto | medio | bajo | ninguno",
+      "evidence_line": "one sentence: what the candidate did + result (max 20 words)"
+    }}
+  ],
+  "insight": {{
+    "claim": "the contrarian observation — one sentence, max 25 words",
+    "implication": "what to do about it — one sentence, max 15 words"
+  }},
+  "first_30_days": [
+    {{
+      "action": "specific decision or action — max 8 words",
+      "reason": "why this first — max 12 words"
+    }}
+  ]
+}}
+
+EXTRACTION RULES:
+- stat_cards: extract 3-4 cards. Pull REAL numbers from the document. Prefer: revenue/growth,
+  key ratio (CPA, retention, LTV), channel concentration, and a risk metric. Do NOT invent numbers.
+- solutions: one per problem section (typically 3). The headline must be the PROBLEM being
+  solved, not the deliverable. Each bullet is a specific action, not a description.
+- match_level: if the section references the candidate's past experience with concrete results,
+  it's "alto". If it references methodology transfer, "medio". If it says "I haven't done exactly
+  this", "bajo". If it uses benchmarks/reasoning only, "ninguno".
+- evidence_line: extract the candidate's SPECIFIC experience cited in each solution section.
+  Must reference a company name and a result. If none cited, use empty string "".
+- first_30_days: extract exactly 3 items. Use the "First 30 Days" section if it exists.
+- insight: extract from the "Non-obvious" or "Insight" section.
+- ALL text must be SHORT. This is for presentation slides, not a document."""
+
+
+def _try_parse_json(text: str, container: str = "object"):
+    """Extract and parse JSON from model output, handling truncated responses."""
+    if container == "object":
+        start_char, end_char = "{", "}"
+    else:
+        start_char, end_char = "[", "]"
+
+    start = text.find(start_char)
+    if start < 0:
+        return None
+
+    end = text.rfind(end_char) + 1
+    if end > start:
+        try:
+            return json.loads(text[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt truncation repair
+    fragment = text[start:]
+    stripped = fragment.rstrip()
+    if stripped and stripped[-1] not in (end_char, start_char, ",", '"',
+                                         "e", "l", "0", "1", "2", "3",
+                                         "4", "5", "6", "7", "8", "9"):
+        last_comma = stripped.rfind(",")
+        if last_comma > 0:
+            stripped = stripped[:last_comma]
+
+    open_braces = stripped.count("{") - stripped.count("}")
+    open_brackets = stripped.count("[") - stripped.count("]")
+    repaired = stripped + "}" * max(open_braces, 0) + "]" * max(open_brackets, 0)
+
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+
+
+async def _condense_for_slides(markdown: str) -> dict | None:
+    """Condense diagnostic markdown into slide-ready data using Haiku."""
+    client = anthropic.AsyncAnthropic()
+
+    for attempt in range(2):
+        try:
+            message = await client.messages.create(
+                model=HAIKU_MODEL,
+                max_tokens=2000,
+                messages=[{"role": "user", "content": CONDENSE_FOR_SLIDES_PROMPT.format(
+                    markdown=markdown[:8000]
+                )}],
+            )
+            text = message.content[0].text.strip()
+
+            if message.stop_reason == "max_tokens":
+                console.print("  [yellow]Slide condensation truncated — attempting repair[/yellow]")
+
+            result = _try_parse_json(text, container="object")
+            if result and result.get("solutions"):
+                console.print(f"  [green]Slide data condensed: {len(result['solutions'])} solutions[/green]")
+                return result
+
+            console.print(f"  [yellow]Slide JSON parse failed (attempt {attempt + 1})[/yellow]")
+        except Exception as exc:
+            console.print(f"  [yellow]Slide condensation error (attempt {attempt + 1}): {exc}[/yellow]")
+
+        if attempt == 0:
+            await asyncio.sleep(1)
+
+    return None
+
+
+def _truncate_words(text: str, max_words: int) -> str:
+    """Truncate text at a word boundary."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return ' '.join(words[:max_words])
+
+
+def _fallback_slide_extraction(markdown: str) -> dict:
+    """Build slide data from regex parsing when Haiku is unavailable."""
+    sections = _parse_diagnostic_sections(markdown)
+    source_text = sections.get("what_i_see", "") or sections.get("opening", "")
+    metrics = _extract_key_metrics(source_text)
+
+    number_pat = re.compile(r'(\$[\d,.]+[MBKk]?|\d+(?:\.\d+)?%|\d+(?:\.\d+)?[xX])')
+
+    stat_cards = []
+    for m in metrics[:4]:
+        num = number_pat.search(m)
+        if num:
+            # Build a clean label from context around the number
+            clean = re.sub(r'\*\*|__|[*_]', '', m).strip()
+            val = num.group(1)
+            # Try to extract a label from text after the number
+            after_idx = clean.find(val) + len(val)
+            after = clean[after_idx:].strip().lstrip('+-,;: ')
+            before_idx = clean.find(val)
+            before = clean[:before_idx].strip().rstrip('+-,;: ')
+            # Prefer text after the number (e.g. "$96 CPA"), fallback to before
+            if after and len(after) > 2:
+                label = ' '.join(after.split()[:4])
+            elif before and len(before) > 2:
+                label = ' '.join(before.split()[-4:])
+            else:
+                label = "Key Metric"
+            # Clean up label: strip trailing punctuation and filler words
+            label = label.strip('.,;:()—–- ').strip()
+            label = re.sub(r'\s+(—|–|-|in|into|a|the|at|of|and|or)$', '', label, flags=re.IGNORECASE)
+            stat_cards.append({"value": val, "label": label or "Key Metric", "context": ""})
+
+    solutions = []
+    for sol in sections.get("solutions", [])[:3]:
+        bullets = []
+        for line in sol["body"].split("\n"):
+            s = line.strip()
+            # Match list items
+            if s.startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", s):
+                bullet_text = re.sub(r'^[-•*]\s+|^\d+\.\s+', '', s).strip()
+                bullet_text = re.sub(r'\*\*|__|[*_]', '', bullet_text)  # strip markdown
+                if len(bullet_text) > 5:
+                    bullets.append(bullet_text[:80])
+            # Match ### sub-headings as bullets
+            elif s.startswith("### "):
+                heading = s[4:].strip()
+                heading = re.sub(r'\*\*|__|[*_]', '', heading)
+                if len(heading) > 3:
+                    bullets.append(heading[:80])
+            # Match bold-prefixed lines like **Action:** description
+            elif re.match(r'^\*\*[^*]+\*\*', s) and not s.startswith("**The ") and not s.startswith("**Why"):
+                bold_text = re.sub(r'\*\*|__|[*_]', '', s).strip()
+                if len(bold_text) > 5:
+                    bullets.append(bold_text[:80])
+            if len(bullets) >= 3:
+                break
+        if not bullets:
+            bullets = [sol["title"]]
+
+        # Try to extract a key metric from the solution body
+        key_metric = {"value": "", "label": ""}
+        body_nums = number_pat.findall(sol["body"])
+        if body_nums:
+            key_metric = {"value": body_nums[0], "label": "Key metric"}
+
+        solutions.append({
+            "headline": sol["title"][:60],
+            "bullets": bullets,
+            "key_metric": key_metric,
+            "match_level": "",
+            "evidence_line": "",
+        })
+
+    # Extract situation summary from what_i_see first paragraph
+    situation_summary = ""
+    if source_text:
+        for line in source_text.split("\n"):
+            s = line.strip()
+            # Skip headings, blockquotes, empty lines, HRs
+            if not s or s.startswith(("#", ">", "---", "***", "___", "|")):
+                continue
+            # Skip bold-only lines
+            if re.match(r'^\*\*[^*]+\*\*$', s):
+                continue
+            # Take first real sentence
+            clean = re.sub(r'\*\*|__|[*_]', '', s).strip()
+            # Truncate to ~15 words
+            words = clean.split()
+            if len(words) > 15:
+                situation_summary = ' '.join(words[:15]) + '...'
+            else:
+                situation_summary = clean
+            break
+
+    # Extract insight — strip blockquote markers
+    insight_text = sections.get("insight", "")
+    claim = ""
+    implication = ""
+    if insight_text:
+        # Strip all > markers and join into clean text
+        clean_lines = []
+        for line in insight_text.strip().split("\n"):
+            cleaned = re.sub(r'^>\s*', '', line).strip()
+            if cleaned:
+                clean_lines.append(cleaned)
+        if clean_lines:
+            # First line (strip bold) is the claim
+            first = re.sub(r'\*\*|__|[*_]', '', clean_lines[0]).strip()
+            claim = _truncate_words(first, 25)
+            # Look for a substantive sentence in the rest as implication
+            for cl in clean_lines[1:]:
+                clean_cl = re.sub(r'\*\*|__|[*_]', '', cl).strip()
+                if clean_cl and len(clean_cl) > 20:
+                    implication = _truncate_words(clean_cl, 18)
+                    break
+
+    # Extract first 30 days
+    first_30 = []
+    f30_text = sections.get("first_30_days", "")
+    for line in f30_text.split("\n"):
+        s = line.strip()
+        # Strip leading list markers
+        s = re.sub(r'^[-•*]\s+', '', s)
+        bold_match = re.match(r'\*\*(.+?)\*\*[:\s]*(.+)', s)
+        if bold_match:
+            bold_part = bold_match.group(1).strip()
+            rest = bold_match.group(2).strip()
+            # Strip "Decision N" prefix
+            action = re.sub(r'^Decision\s+\d+[:\s]*', '', bold_part, flags=re.IGNORECASE).strip()
+            reason = rest
+            # If action is empty (bold was just "Decision N"), extract from rest
+            if not action:
+                # Split on " — because " or " — " to separate action from reason
+                if ' — because ' in rest:
+                    parts = rest.split(' — because ', 1)
+                    action = parts[0].strip()
+                    reason = parts[1].strip()
+                elif ' — ' in rest:
+                    parts = rest.split(' — ', 1)
+                    action = parts[0].strip()
+                    reason = parts[1].strip()
+                else:
+                    # Take first 8 words as action
+                    words = rest.split()
+                    action = ' '.join(words[:8])
+                    reason = ' '.join(words[8:])
+            elif ' — ' in reason:
+                reason = reason.split(' — ')[0].strip()
+            first_30.append({
+                "action": _truncate_words(action, 10),
+                "reason": _truncate_words(reason, 14),
+            })
+        if len(first_30) >= 3:
+            break
+
+    return {
+        "situation_summary": situation_summary,
+        "stat_cards": stat_cards,
+        "solutions": solutions,
+        "insight": {"claim": claim, "implication": implication},
+        "first_30_days": first_30,
+    }
+
+
+async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: str,
+                                   job_title: str, mapping_quality: dict) -> bytes:
+    """Generate a landscape 16:9 slide deck PDF from diagnostic markdown.
+
+    Uses Claude Haiku to condense the diagnostic into slide-ready data,
+    then renders via WeasyPrint.
+    """
+    from weasyprint import HTML
+
+    # Step 1: Condense via Haiku
+    console.print("[bold]Condensing diagnostic for slides...[/bold]")
+    slide_data = await _condense_for_slides(markdown)
+
+    if slide_data is None:
+        console.print("  [yellow]Haiku failed — using regex fallback[/yellow]")
+        slide_data = _fallback_slide_extraction(markdown)
+
+    # Step 2: Extract profile and match data (same as generate_deck_pdf)
+    sections = _parse_diagnostic_sections(markdown)
+    header_profile = _parse_header_profile(sections.get("opening", ""))
+
+    candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
+    contact = profile.get("contacto", "") or header_profile.get("contacto", "")
+    current_role = profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
+    skills = profile.get("skills_funcionales", [])[:8]
+
+    if not company_name:
+        company_name = header_profile.get("company", "Company")
+    if not job_title:
+        job_title = header_profile.get("rol_target", "Role")
+
+    match_data = {
+        "alto": mapping_quality.get("alto", 0),
+        "medio": mapping_quality.get("medio", 0),
+        "bajo": mapping_quality.get("bajo", 0),
+        "ninguno": mapping_quality.get("ninguno", 0),
+    }
+    if sum(match_data.values()) == 0 and sections.get("experience_match_raw"):
+        parsed_counts, parsed_skills = _parse_experience_match(sections["experience_match_raw"])
+        match_data = parsed_counts
+        if not skills:
+            skills = parsed_skills[:8]
+
+    # Step 3: Render template
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
+    template = env.get_template("slides.html")
+
+    html_content = template.render(
+        candidate_name=candidate_name or "Candidate",
+        company_name=company_name or "Company",
+        job_title=job_title or "Role",
+        contact=contact,
+        current_role=current_role,
+        date_str=date.today().strftime("%B %Y"),
+        slide_data=slide_data,
+        skills=skills,
+        match_data=match_data,
+    )
+
+    pdf_bytes = HTML(string=html_content).write_pdf()
+    console.print("[bold green]Slide deck PDF generated[/bold green]")
     return pdf_bytes

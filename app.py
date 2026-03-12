@@ -14,7 +14,7 @@ from analyzer import build_context
 from decomposer import decompose_jd
 from generator import generate_case_study, generate_case_study_streaming, score_case_quality
 from applier import generate_application_streaming
-from deck import generate_deck_pdf
+from deck import generate_deck_pdf, generate_slide_deck_pdf
 from video import create_video_job, get_video_job, run_video_pipeline
 
 load_dotenv(override=True)
@@ -244,6 +244,7 @@ async def export_deck(request: Request):
     company_name = body.get("company_name", "").strip()
     job_title = body.get("job_title", "").strip()
     mapping_quality = body.get("mapping_quality") or {}
+    deck_format = body.get("format", "slides")
 
     if not markdown:
         return JSONResponse(
@@ -252,16 +253,26 @@ async def export_deck(request: Request):
         )
 
     try:
-        pdf_bytes = generate_deck_pdf(
-            markdown=markdown,
-            profile=profile,
-            company_name=company_name,
-            job_title=job_title,
-            mapping_quality=mapping_quality,
-        )
-
-        slug = (company_name or "company").lower().replace(" ", "-")[:30]
-        filename = f"diagnostic-{slug}.pdf"
+        if deck_format == "slides":
+            pdf_bytes = await generate_slide_deck_pdf(
+                markdown=markdown,
+                profile=profile,
+                company_name=company_name,
+                job_title=job_title,
+                mapping_quality=mapping_quality,
+            )
+            slug = (company_name or "company").lower().replace(" ", "-")[:30]
+            filename = f"slides-{slug}.pdf"
+        else:
+            pdf_bytes = generate_deck_pdf(
+                markdown=markdown,
+                profile=profile,
+                company_name=company_name,
+                job_title=job_title,
+                mapping_quality=mapping_quality,
+            )
+            slug = (company_name or "company").lower().replace(" ", "-")[:30]
+            filename = f"diagnostic-{slug}.pdf"
 
         return Response(
             content=pdf_bytes,
