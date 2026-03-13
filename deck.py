@@ -543,7 +543,7 @@ def generate_deck_pdf(markdown: str, profile: dict, company_name: str,
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 CONDENSE_FOR_SLIDES_PROMPT = """Condense this diagnostic document into slide-ready data.
-You are extracting KEY DATA POINTS and SHORT HEADLINES — not summarizing paragraphs.
+You are extracting KEY DATA POINTS and SHORT COPY — not summarizing paragraphs.
 
 DIAGNOSTIC DOCUMENT:
 {markdown}
@@ -555,27 +555,30 @@ Respond ONLY with valid JSON matching this schema:
   "situation_summary": "One sentence (max 15 words) capturing the company's inflection point",
   "stat_cards": [
     {{
-      "value": "the number, percentage, or dollar amount (e.g. '$96', '70%', '5x')",
+      "value": "the number/percentage/dollar amount (e.g. '$96', '70%', '5x')",
       "label": "what the number measures (max 4 words)",
       "context": "why it matters (max 8 words)"
     }}
   ],
-  "solutions": [
+  "actions": [
     {{
-      "headline": "what you are fixing — active voice, max 8 words",
-      "bullets": ["action point max 12 words", "action point max 12 words", "action point max 12 words"],
+      "headline": "the PROBLEM being solved — active voice, max 8 words",
+      "approach": "3-4 sentence paragraph: what you'd build/change/launch and in what sequence. Be specific — name channels, tools, frameworks.",
+      "por_que": "one sentence: what happens to the business if this isn't fixed. Consequence framing — name the metric that degrades.",
+      "tested": "one sentence: candidate's prior experience evidence. Format: 'At [Company], [action] → [result]'. Empty string ONLY if truly no evidence.",
+      "ai_callout": "one sentence: [AI tool/category] for [specific use case] → [expected impact]. Empty string only if no AI angle applies.",
+      "match_level": "alto | medio | bajo | ninguno",
       "key_metric": {{
         "value": "the single most important number for this problem",
         "label": "what it measures (max 5 words)"
-      }},
-      "match_level": "alto | medio | bajo | ninguno",
-      "evidence_line": "one sentence: what the candidate did + result (max 20 words)",
-      "ai_callout": "one sentence: specific AI/automation tool + use case + expected impact, or empty string"
+      }}
     }}
   ],
   "insight": {{
-    "claim": "the contrarian observation — one sentence, max 25 words",
-    "implication": "what to do about it — one sentence, max 15 words"
+    "titulo": "the contrarian observation — one bold sentence, max 20 words",
+    "convencional": "what the conventional wisdom says — one sentence, max 20 words",
+    "realidad": "the actual reality — one sentence, max 25 words",
+    "consecuencia": "the practical implication — what to do about it, max 15 words"
   }},
   "first_30_days": [
     {{
@@ -587,28 +590,26 @@ Respond ONLY with valid JSON matching this schema:
 
 EXTRACTION RULES:
 - stat_cards: extract 3-4 cards. Pull REAL numbers from the document. Prefer: revenue/growth,
-  key ratio (CPA, retention, LTV), channel concentration, and a risk metric. Do NOT invent numbers.
-- solutions: one per problem section (typically 3). The headline must be the PROBLEM being
-  solved, not the deliverable. Each bullet is a specific action, not a description.
-  ORDERING: Solutions MUST preserve the document's order — the problem with the most severe
-  near-term business consequences comes first. Do NOT reorder by match level.
-- match_level: if the section references the candidate's past experience with concrete results,
-  it's "alto". If it references methodology transfer, "medio". If it says "I haven't done exactly
-  this", "bajo". If it uses benchmarks/reasoning only, "ninguno".
-- evidence_line: extract the candidate's SPECIFIC past experience from each solution section.
-  Look for "What I've already tested", "Related experience", or any sentence that names a
-  previous company and describes what the candidate did there.
-  Format: "At [Company], [what was done] → [result]" (max 20 words).
-  This is critical for credibility — do NOT return empty string if the section contains any
-  reference to past work. Search thoroughly.
-- ai_callout (per solution): If the solution mentions AI, automation, or tooling innovation,
-  extract a one-sentence callout: "[Tool/category] for [use case] → [impact]".
-  Also check the JOB DESCRIPTION below — if it mentions AI/automation and the solution could
-  benefit from AI, generate a concrete callout even if the diagnostic didn't explicitly mention one.
-  Format: "[AI tool category] for [specific use case] → [expected metric improvement]"
-  Set to empty string "" only if no AI angle applies to this specific problem.
-- first_30_days: extract exactly 3 items. Use the "First 30 Days" section if it exists.
-- insight: extract from the "Non-obvious" or "Insight" section.
+  key ratio (CPA, retention, LTV), channel concentration, risk metric. Do NOT invent numbers.
+- actions: extract exactly 2 (the two most impactful problems). The headline must be the
+  PROBLEM being solved, not the deliverable. ORDERING: preserve the document's order — the
+  problem with the most severe near-term business consequences comes first.
+- approach: write as a paragraph (3-4 sentences), NOT bullet points. Describe what to build,
+  which channels/tools/frameworks to use, and in what sequence. This is the main body of
+  the slide — it needs to feel like a concrete plan of attack.
+- por_que: frame as consequence of NOT acting. "Without this, [metric] degrades by [amount]."
+  NOT "This will improve [metric]."
+- match_level: concrete past results = "alto", methodology transfer = "medio",
+  adjacent experience = "bajo", benchmarks/reasoning only = "ninguno".
+- tested: extract SPECIFIC past experience. Look for "What I've already tested",
+  "Related experience", or any sentence citing a company name + action + result.
+  This is critical for credibility — search thoroughly.
+- ai_callout: also check the JOB DESCRIPTION — if it mentions AI/automation and the
+  action could benefit, generate a concrete callout even if not in the diagnostic.
+  Format: "[Tool] for [use case] → [impact vs. baseline]".
+- insight: split into 4 parts. titulo = the claim. convencional = what most people think.
+  realidad = the counterintuitive truth. consecuencia = what to do about it.
+- first_30_days: extract exactly 3 items from the "First 30 Days" section.
 - ALL text must be SHORT. This is for presentation slides, not a document."""
 
 
@@ -661,7 +662,7 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
         try:
             message = await client.messages.create(
                 model=HAIKU_MODEL,
-                max_tokens=2500,
+                max_tokens=3500,
                 messages=[{"role": "user", "content": CONDENSE_FOR_SLIDES_PROMPT.format(
                     markdown=markdown[:12000],
                     jd_context=jd_context,
@@ -673,14 +674,14 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
                 console.print("  [yellow]Slide condensation truncated — attempting repair[/yellow]")
 
             result = _try_parse_json(text, container="object")
-            if result and result.get("solutions"):
-                console.print(f"  [green]Slide data condensed: {len(result['solutions'])} solutions[/green]")
+            if result and result.get("actions"):
+                console.print(f"  [green]Slide data condensed: {len(result['actions'])} actions[/green]")
                 # Validate critical fields
-                for i, sol in enumerate(result.get("solutions", [])):
-                    if not sol.get("evidence_line"):
-                        console.print(f"  [yellow]Warning: solution {i+1} has no evidence_line[/yellow]")
-                    if not sol.get("ai_callout"):
-                        console.print(f"  [yellow]Warning: solution {i+1} has no ai_callout[/yellow]")
+                for i, act in enumerate(result.get("actions", [])):
+                    if not act.get("tested"):
+                        console.print(f"  [yellow]Warning: action {i+1} has no tested evidence[/yellow]")
+                    if not act.get("ai_callout"):
+                        console.print(f"  [yellow]Warning: action {i+1} has no ai_callout[/yellow]")
                 return result
 
             console.print(f"  [yellow]Slide JSON parse failed (attempt {attempt + 1})[/yellow]")
@@ -733,32 +734,22 @@ def _fallback_slide_extraction(markdown: str) -> dict:
             label = re.sub(r'\s+(—|–|-|in|into|a|the|at|of|and|or)$', '', label, flags=re.IGNORECASE)
             stat_cards.append({"value": val, "label": label or "Key Metric", "context": ""})
 
-    solutions = []
-    for sol in sections.get("solutions", [])[:3]:
-        bullets = []
+    actions = []
+    for sol in sections.get("solutions", [])[:2]:
+        # Build approach paragraph from body text (first substantial lines)
+        approach_lines = []
         for line in sol["body"].split("\n"):
             s = line.strip()
-            # Match list items
-            if s.startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", s):
-                bullet_text = re.sub(r'^[-•*]\s+|^\d+\.\s+', '', s).strip()
-                bullet_text = re.sub(r'\*\*|__|[*_]', '', bullet_text)  # strip markdown
-                if len(bullet_text) > 5:
-                    bullets.append(bullet_text[:80])
-            # Match ### sub-headings as bullets
-            elif s.startswith("### "):
-                heading = s[4:].strip()
-                heading = re.sub(r'\*\*|__|[*_]', '', heading)
-                if len(heading) > 3:
-                    bullets.append(heading[:80])
-            # Match bold-prefixed lines like **Action:** description
-            elif re.match(r'^\*\*[^*]+\*\*', s) and not s.startswith("**The ") and not s.startswith("**Why"):
-                bold_text = re.sub(r'\*\*|__|[*_]', '', s).strip()
-                if len(bold_text) > 5:
-                    bullets.append(bold_text[:80])
-            if len(bullets) >= 3:
+            if not s or s.startswith(("#", ">", "---", "***", "___", "|")):
+                continue
+            # Strip list markers and bold
+            s = re.sub(r'^[-•*]\s+|^\d+\.\s+', '', s)
+            s = re.sub(r'\*\*|__|[*_]', '', s).strip()
+            if len(s) > 10:
+                approach_lines.append(s)
+            if len(approach_lines) >= 4:
                 break
-        if not bullets:
-            bullets = [sol["title"]]
+        approach = ' '.join(approach_lines) if approach_lines else sol["title"]
 
         # Try to extract a key metric from the solution body
         key_metric = {"value": "", "label": ""}
@@ -766,13 +757,14 @@ def _fallback_slide_extraction(markdown: str) -> dict:
         if body_nums:
             key_metric = {"value": body_nums[0], "label": "Key metric"}
 
-        solutions.append({
+        actions.append({
             "headline": sol["title"][:60],
-            "bullets": bullets,
-            "key_metric": key_metric,
-            "match_level": "",
-            "evidence_line": "",
+            "approach": _truncate_words(approach, 60),
+            "por_que": "",
+            "tested": "",
             "ai_callout": "",
+            "match_level": "",
+            "key_metric": key_metric,
         })
 
     # Extract situation summary from what_i_see first paragraph
@@ -796,27 +788,29 @@ def _fallback_slide_extraction(markdown: str) -> dict:
                 situation_summary = clean
             break
 
-    # Extract insight — strip blockquote markers
+    # Extract insight — strip blockquote markers, expand to 4-part
     insight_text = sections.get("insight", "")
-    claim = ""
-    implication = ""
+    titulo = ""
+    convencional = ""
+    realidad = ""
+    consecuencia = ""
     if insight_text:
-        # Strip all > markers and join into clean text
         clean_lines = []
         for line in insight_text.strip().split("\n"):
             cleaned = re.sub(r'^>\s*', '', line).strip()
             if cleaned:
                 clean_lines.append(cleaned)
         if clean_lines:
-            # First line (strip bold) is the claim
             first = re.sub(r'\*\*|__|[*_]', '', clean_lines[0]).strip()
-            claim = _truncate_words(first, 25)
-            # Look for a substantive sentence in the rest as implication
+            titulo = _truncate_words(first, 20)
             for cl in clean_lines[1:]:
                 clean_cl = re.sub(r'\*\*|__|[*_]', '', cl).strip()
                 if clean_cl and len(clean_cl) > 20:
-                    implication = _truncate_words(clean_cl, 18)
-                    break
+                    if not realidad:
+                        realidad = _truncate_words(clean_cl, 25)
+                    elif not consecuencia:
+                        consecuencia = _truncate_words(clean_cl, 15)
+                        break
 
     # Extract first 30 days
     first_30 = []
@@ -860,8 +854,13 @@ def _fallback_slide_extraction(markdown: str) -> dict:
     return {
         "situation_summary": situation_summary,
         "stat_cards": stat_cards,
-        "solutions": solutions,
-        "insight": {"claim": claim, "implication": implication},
+        "actions": actions,
+        "insight": {
+            "titulo": titulo,
+            "convencional": convencional,
+            "realidad": realidad,
+            "consecuencia": consecuencia,
+        },
         "first_30_days": first_30,
     }
 
@@ -922,8 +921,6 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
         current_role=current_role,
         date_str=date.today().strftime("%B %Y"),
         slide_data=slide_data,
-        skills=skills,
-        match_data=match_data,
     )
 
     pdf_bytes = HTML(string=html_content).write_pdf()
