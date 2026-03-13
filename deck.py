@@ -563,11 +563,14 @@ Respond ONLY with valid JSON matching this schema:
   "actions": [
     {{
       "headline": "the PROBLEM being solved — active voice, max 8 words",
-      "approach": "3-4 sentence paragraph: what you'd build/change/launch and in what sequence. Be specific — name channels, tools, frameworks.",
+      "approach_bullets": [
+        "Bullet 1: what to build/change — max 15 words. Name the channel, tool, or framework.",
+        "Bullet 2: second move — max 15 words. Name the mechanism or metric.",
+        "Bullet 3: validation step — max 15 words. Name the timeline or expected outcome."
+      ],
       "por_que": "one sentence: what happens to the business if this isn't fixed. Consequence framing — name the metric that degrades.",
       "tested": "one sentence: candidate's prior experience evidence. Format: 'At [Company], [action] → [result]'. Empty string ONLY if truly no evidence.",
       "ai_callout": "one sentence: [AI tool/category] for [specific use case] → [expected impact]. Empty string only if no AI angle applies.",
-      "match_level": "alto | medio | bajo | ninguno",
       "key_metric": {{
         "value": "the single most important number for this problem",
         "label": "what it measures (max 5 words)"
@@ -594,13 +597,11 @@ EXTRACTION RULES:
 - actions: extract exactly 2 (the two most impactful problems). The headline must be the
   PROBLEM being solved, not the deliverable. ORDERING: preserve the document's order — the
   problem with the most severe near-term business consequences comes first.
-- approach: write as a paragraph (3-4 sentences), NOT bullet points. Describe what to build,
-  which channels/tools/frameworks to use, and in what sequence. This is the main body of
-  the slide — it needs to feel like a concrete plan of attack.
+- approach_bullets: exactly 3 items. Each is one concrete action (max 15 words).
+  NOT prose sentences — shorthand like "Deploy geo-holdout tests across top 5 DMAs for incrementality."
+  Each bullet should layer a different dimension: channel/tool, mechanism/metric, timeline/outcome.
 - por_que: frame as consequence of NOT acting. "Without this, [metric] degrades by [amount]."
   NOT "This will improve [metric]."
-- match_level: concrete past results = "alto", methodology transfer = "medio",
-  adjacent experience = "bajo", benchmarks/reasoning only = "ninguno".
 - tested: extract SPECIFIC past experience. Look for "What I've already tested",
   "Related experience", or any sentence citing a company name + action + result.
   This is critical for credibility — search thoroughly.
@@ -682,6 +683,12 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
                         console.print(f"  [yellow]Warning: action {i+1} has no tested evidence[/yellow]")
                     if not act.get("ai_callout"):
                         console.print(f"  [yellow]Warning: action {i+1} has no ai_callout[/yellow]")
+                    # Normalize: if Haiku returned old "approach" string, split into bullets
+                    if "approach_bullets" not in act and "approach" in act:
+                        sentences = re.split(r'(?<=[.!?])\s+', act["approach"])
+                        act["approach_bullets"] = [_truncate_words(s, 15) for s in sentences[:3]]
+                    if not isinstance(act.get("approach_bullets"), list):
+                        act["approach_bullets"] = [str(act.get("approach_bullets", ""))]
                 return result
 
             console.print(f"  [yellow]Slide JSON parse failed (attempt {attempt + 1})[/yellow]")
@@ -736,8 +743,8 @@ def _fallback_slide_extraction(markdown: str) -> dict:
 
     actions = []
     for sol in sections.get("solutions", [])[:2]:
-        # Build approach paragraph from body text (first substantial lines)
-        approach_lines = []
+        # Build approach bullets from body text (first 3 substantial lines)
+        approach_bullets = []
         for line in sol["body"].split("\n"):
             s = line.strip()
             if not s or s.startswith(("#", ">", "---", "***", "___", "|")):
@@ -746,10 +753,11 @@ def _fallback_slide_extraction(markdown: str) -> dict:
             s = re.sub(r'^[-•*]\s+|^\d+\.\s+', '', s)
             s = re.sub(r'\*\*|__|[*_]', '', s).strip()
             if len(s) > 10:
-                approach_lines.append(s)
-            if len(approach_lines) >= 4:
+                approach_bullets.append(_truncate_words(s, 15))
+            if len(approach_bullets) >= 3:
                 break
-        approach = ' '.join(approach_lines) if approach_lines else sol["title"]
+        if not approach_bullets:
+            approach_bullets = [sol["title"][:80]]
 
         # Try to extract a key metric from the solution body
         key_metric = {"value": "", "label": ""}
@@ -759,11 +767,10 @@ def _fallback_slide_extraction(markdown: str) -> dict:
 
         actions.append({
             "headline": sol["title"][:60],
-            "approach": _truncate_words(approach, 60),
+            "approach_bullets": approach_bullets,
             "por_que": "",
             "tested": "",
             "ai_callout": "",
-            "match_level": "",
             "key_metric": key_metric,
         })
 

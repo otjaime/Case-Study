@@ -290,6 +290,26 @@ body {
   color: var(--white);
   font-weight: 600;
 }
+.action-bullets { list-style: none; padding: 0; margin: 0; }
+.action-bullet-item {
+  font-size: 9.5pt;
+  color: rgba(240,244,255,0.8);
+  line-height: 1.45;
+  font-weight: 300;
+  padding-left: 12pt;
+  position: relative;
+  margin-bottom: 5pt;
+}
+.action-bullet-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5pt;
+  width: 5pt;
+  height: 5pt;
+  border-radius: 50%;
+  background: var(--blue);
+}
 
 /* Por qué (consequence framing) */
 .por-que-box {
@@ -381,35 +401,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-
-.match-indicator {
-  font-size: 8.5pt;
-  font-weight: 600;
-  padding: 4pt 0;
-  display: flex;
-  align-items: center;
-}
-.match-dot {
-  display: inline-block;
-  width: 7pt;
-  height: 7pt;
-  border-radius: 50%;
-  margin-right: 5pt;
-}
-.match-alto .match-dot { background: var(--green); }
-.match-alto { color: var(--green); }
-.match-medio .match-dot { background: var(--amber); }
-.match-medio { color: var(--amber); }
-.match-bajo .match-dot { background: #fb923c; }
-.match-bajo { color: #fb923c; }
-.match-ninguno .match-dot { background: var(--muted); }
-.match-ninguno { color: var(--muted); }
-
-/* Match-level top accent on action slides */
-.action-accent-alto { border-top: 3pt solid var(--green); }
-.action-accent-medio { border-top: 3pt solid var(--amber); }
-.action-accent-bajo { border-top: 3pt solid #fb923c; }
-.action-accent-ninguno { border-top: 3pt solid var(--muted); }
 
 /* Background number watermark */
 .action-num-bg {
@@ -574,33 +565,38 @@ body {
 }
 .close-bar {
   position: absolute;
-  bottom: 44pt;
+  bottom: 14mm;
   left: 20mm;
   right: 20mm;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 10pt;
+  padding-top: 12pt;
   border-top: 1px solid rgba(11,18,32,0.1);
 }
 .close-text {
   font-size: 9pt;
   color: #556;
   font-weight: 300;
-  max-width: 340pt;
+  max-width: 300pt;
   line-height: 1.4;
 }
-.close-name {
-  font-size: 10pt;
-  font-weight: 600;
-  color: var(--dark);
+.close-card {
+  background: var(--dark);
+  border-radius: 5pt;
+  padding: 10pt 16pt;
   text-align: right;
 }
+.close-name {
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: -0.2pt;
+}
 .close-email {
-  font-size: 8.5pt;
-  color: var(--blue2);
-  font-weight: 400;
-  text-align: right;
+  font-size: 10pt;
+  color: var(--blue);
+  font-weight: 500;
   margin-top: 2pt;
 }
 </style>
@@ -656,7 +652,7 @@ body {
 <!-- SLIDES 3 & 4: Action slides                                       -->
 <!-- ================================================================ -->
 {% for action in slide_data.actions[:2] %}
-<div class="slide slide-action{% if action.match_level %} action-accent-{{ action.match_level }}{% endif %}">
+<div class="slide slide-action">
   <div class="pattern-grid"></div>
   <div class="action-num-bg">{{ "%02d"|format(loop.index) }}</div>
   <div class="action-header">
@@ -669,7 +665,16 @@ body {
   <div class="action-divider"></div>
   <div class="action-body">
     <div class="action-left">
-      {% if action.approach %}
+      {% if action.approach_bullets %}
+      <div class="action-block">
+        <div class="action-block-label">The Approach</div>
+        <ul class="action-bullets">
+          {% for bullet in action.approach_bullets %}
+          <li class="action-bullet-item">{{ bullet }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% elif action.approach %}
       <div class="action-block">
         <div class="action-block-label">The Approach</div>
         <div class="action-block-text">{{ action.approach }}</div>
@@ -687,12 +692,6 @@ body {
       <div class="metric-card">
         <div class="metric-value">{{ action.key_metric.value }}</div>
         <div class="metric-label">{{ action.key_metric.label }}</div>
-      </div>
-      {% endif %}
-      {% if action.match_level %}
-      <div class="match-indicator match-{{ action.match_level }}">
-        <span class="match-dot"></span>
-        {{ action.match_level | replace('alto','Strong Match') | replace('medio','Method Match') | replace('bajo','Adjacent') | replace('ninguno','Reasoning Only') }}
       </div>
       {% endif %}
       {% if action.tested %}
@@ -776,7 +775,7 @@ body {
   {% endif %}
   <div class="close-bar">
     <div class="close-text">I'd welcome the chance to go deeper on any of these areas.</div>
-    <div>
+    <div class="close-card">
       <div class="close-name">{{ candidate_name }}</div>
       {% if contact %}<div class="close-email">{{ contact }}</div>{% endif %}
     </div>
