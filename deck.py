@@ -446,6 +446,37 @@ def _inline(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Career tagline synthesis (fallback when profile lacks "tagline" field)
+# ---------------------------------------------------------------------------
+
+def _synthesize_tagline(profile: dict) -> str:
+    """Build a career one-liner from profile fields when tagline is missing."""
+    if not profile:
+        return ""
+    seniority = profile.get("seniority", "")
+    industries = profile.get("industrias", [])
+    skills = profile.get("skills_funcionales", [])
+    empresas = profile.get("empresas", [])
+
+    # Estimate years from number of companies (rough proxy)
+    n = len(empresas)
+    years = "10+" if n >= 4 else "5+" if n >= 2 else ""
+
+    # Pick the best domain descriptor
+    domain = ""
+    if skills:
+        domain = " & ".join(skills[:2]).lower()
+    elif industries:
+        domain = " & ".join(industries[:2]).lower()
+
+    if years and domain:
+        return f"{years} years in {domain}"
+    if seniority and domain:
+        return f"{seniority.title()}-level {domain}"
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # PDF generation
 # ---------------------------------------------------------------------------
 
@@ -472,7 +503,7 @@ def generate_deck_pdf(markdown: str, profile: dict, company_name: str,
     header_profile = _parse_header_profile(sections.get("opening", ""))
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("tagline", "") or profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
+    current_role = profile.get("tagline", "") or _synthesize_tagline(profile) or header_profile.get("rol_actual", "")
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
@@ -552,7 +583,7 @@ DIAGNOSTIC DOCUMENT:
 
 Respond ONLY with valid JSON matching this schema:
 {{
-  "situation_summary": "One sentence (max 15 words) capturing the company's inflection point",
+  "situation_summary": "One sentence (max 15 words) naming the TENSION or CONTRADICTION — must have two opposing forces (e.g. 'X says A, but Y says B'). Never state only one side.",
   "stat_cards": [
     {{
       "value": "the number/percentage/dollar amount (e.g. '$96', '70%', '5x')",
@@ -593,8 +624,13 @@ Respond ONLY with valid JSON matching this schema:
 }}
 
 EXTRACTION RULES:
-- stat_cards: extract 3-4 cards. Pull REAL numbers from the document. Prefer: revenue/growth,
-  key ratio (CPA, retention, LTV), channel concentration, risk metric. Do NOT invent numbers.
+- stat_cards: extract 3-4 cards. Pull REAL numbers from the document.
+  DIAGNOSTIC NUMBERS ONLY — each card must reveal a PROBLEM, GAP, or INEFFICIENCY the candidate diagnosed.
+  Good: budget misallocation ($2-4M), conversion gap (2.1%), pipeline leak (35% churn), cost inefficiency ($96 CPA).
+  BAD: market size ($1T TAM), total funding ($41M raised), company age, headcount — these are CONTEXT, not diagnosis.
+  The hiring manager already knows the market context. They need to see the candidate found the operational problem.
+  Prefer: misallocated budget, conversion bottleneck, channel concentration risk, cost-per-outcome ratio.
+  Do NOT invent numbers.
 - actions: extract exactly 2 (the two most impactful problems). The headline must be the
   PROBLEM being solved, not the deliverable. ORDERING: preserve the document's order — the
   problem with the most severe near-term business consequences comes first.
@@ -602,7 +638,11 @@ EXTRACTION RULES:
   if needed (e.g. "Resolve brand split: enterprise vs. services buyers").
 - approach_bullets: EXACTLY 3 items. NEVER 4 or more. Each is one concrete action (max 12 words).
   NOT prose sentences — shorthand like "Deploy geo-holdout tests across top 5 DMAs."
-  Each bullet should layer a different dimension: channel/tool, mechanism/metric, timeline/outcome.
+  ALL 3 BULLETS MUST BE AT THE SAME ABSTRACTION LEVEL — all strategic moves.
+  Do NOT mix a strategic move ("Segment enterprise vs. services messaging") with a tactical
+  execution detail ("A/B test with Jasper/Writer.ai within 2 weeks"). If one bullet names a
+  channel/tool/framework, ALL bullets should name a channel/tool/framework. If one names an
+  outcome, ALL should name outcomes. Consistency of level matters more than variety.
 - por_que: frame as consequence of NOT acting. "Without this, [metric] degrades by [amount]."
   NOT "This will improve [metric]."
 - tested: extract SPECIFIC past experience. Look for "What I've already tested",
@@ -918,7 +958,7 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
 
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("tagline", "") or profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
+    current_role = profile.get("tagline", "") or _synthesize_tagline(profile) or header_profile.get("rol_actual", "")
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
