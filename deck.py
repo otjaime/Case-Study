@@ -695,11 +695,11 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
                     # Normalize: if Haiku returned old "approach" string, split into bullets
                     if "approach_bullets" not in act and "approach" in act:
                         sentences = re.split(r'(?<=[.!?])\s+', act["approach"])
-                        act["approach_bullets"] = [_truncate_words(s, 12) for s in sentences[:3]]
+                        act["approach_bullets"] = [_truncate_words(s, 18) for s in sentences[:3]]
                     if not isinstance(act.get("approach_bullets"), list):
                         act["approach_bullets"] = [str(act.get("approach_bullets", ""))]
-                    # Enforce: max 3 bullets, max 12 words each
-                    act["approach_bullets"] = [_truncate_words(b, 12) for b in act["approach_bullets"][:3]]
+                    # Enforce: max 3 bullets, max 18 words each (prompt says 12, this is safety net)
+                    act["approach_bullets"] = [_truncate_words(b, 18) for b in act["approach_bullets"][:3]]
                 # Ensure close_line exists
                 if not result.get("close_line"):
                     result["close_line"] = ""
