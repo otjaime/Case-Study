@@ -572,7 +572,7 @@ Respond ONLY with valid JSON matching this schema:
       "tested": "one sentence: candidate's prior experience evidence. Format: 'At [Company], [action] → [result]'. Empty string ONLY if truly no evidence.",
       "ai_callout": "one sentence: [AI tool/category] for [specific use case] → [expected impact]. Empty string only if no AI angle applies.",
       "key_metric": {{
-        "value": "the single most important number for this problem",
+        "value": "a concrete number from the diagnostic — dollar amount, percentage, or ratio (e.g. '$96', '70%', '2.1x'). NEVER a vague timeframe like '6-12 months'.",
         "label": "what it measures (max 5 words)"
       }}
     }}
@@ -611,6 +611,9 @@ EXTRACTION RULES:
 - insight: split into 4 parts. titulo = the claim. convencional = what most people think.
   realidad = the counterintuitive truth. consecuencia = what to do about it.
 - first_30_days: extract exactly 3 items from the "First 30 Days" section.
+- key_metric: must be a concrete anchored number ($, %, x, ratio). NEVER a vague range
+  like "6-12 months" or "several quarters". If no concrete number exists for this problem,
+  use a derived threshold (e.g. "$100 CPA ceiling", "35% churn rate").
 - ALL text must be SHORT. This is for presentation slides, not a document."""
 
 
