@@ -527,14 +527,14 @@ COMPETITIVE RESPONSE RULE: If COMPETITIVE CONTEXT is provided above, at least ON
 MUST directly address how to win against the named competitor(s). Don't just identify the competitive \
 threat — propose a specific counter-strategy (positioning, pricing, messaging, or distribution advantage).
 
-AI/TOOLING INNOVATION RULE: Read the JOB DESCRIPTION text provided above. If it mentions AI, \
-automation, tooling innovation, or "leveraging AI," you MUST include a concrete paragraph in at \
-least ONE problem solution showing how AI or automation would be applied. Be specific: name the \
-tool category or specific tool, describe the use case, and state the expected impact. \
-Example: "Deploy an AI-powered creative testing pipeline (e.g., Jasper for variant generation + \
-automated ROAS feedback loops) to compress the creative production cycle from 2 weeks to 3 days." \
-Do NOT add a separate AI section — weave it into the most relevant problem solution. \
-A senior role that explicitly requires AI fluency cannot have zero AI mentions in the deliverable.
+AI/TOOLING RULE: The JOB DESCRIPTION is provided above. For EACH problem solution, include a \
+one-sentence "AI angle" — a specific tool or automation that would accelerate the solution. \
+Name the tool category (e.g., "Pecan AI for anomaly detection on daily channel data", "Jasper \
+for creative variant generation at 3-5x velocity"), the use case, and the expected impact on a \
+key metric. If the JD explicitly mentions AI, automation, or "leveraging AI," this is MANDATORY \
+— zero AI mentions is a disqualifying gap for a senior role. Even if the JD doesn't mention AI, \
+a $200K+ role in 2026 should demonstrate tooling fluency. Weave each AI angle naturally into \
+its problem solution — not as a separate section.
 
 For each problem where nivel_match is "alto" or "medio":
 

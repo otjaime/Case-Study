@@ -569,19 +569,10 @@ Respond ONLY with valid JSON matching this schema:
         "label": "what it measures (max 5 words)"
       }},
       "match_level": "alto | medio | bajo | ninguno",
-      "evidence_line": "one sentence: what the candidate did + result (max 20 words)"
+      "evidence_line": "one sentence: what the candidate did + result (max 20 words)",
+      "ai_callout": "one sentence: specific AI/automation tool + use case + expected impact, or empty string"
     }}
   ],
-  "ai_tooling": {{
-    "headline": "AI/tooling strategy headline — max 8 words, or empty string if no AI/tooling mentions",
-    "applications": [
-      {{
-        "tool_or_category": "name of tool or tool category",
-        "use_case": "what it does for this company — max 15 words",
-        "impact": "expected result — max 10 words"
-      }}
-    ]
-  }},
   "insight": {{
     "claim": "the contrarian observation — one sentence, max 25 words",
     "implication": "what to do about it — one sentence, max 15 words"
@@ -604,13 +595,18 @@ EXTRACTION RULES:
 - match_level: if the section references the candidate's past experience with concrete results,
   it's "alto". If it references methodology transfer, "medio". If it says "I haven't done exactly
   this", "bajo". If it uses benchmarks/reasoning only, "ninguno".
-- evidence_line: extract the candidate's SPECIFIC experience cited in each solution section.
-  Must reference a company name and a result. If none cited, use empty string "".
-- ai_tooling: ONLY populate if the diagnostic mentions AI, automation, or tooling innovation,
-  OR if a JOB DESCRIPTION section is provided below that explicitly requires AI/tooling fluency.
-  Extract concrete applications (tool + use case + impact). If the diagnostic has no AI mentions
-  but the JD requires it, set headline to "AI & Tooling Strategy" with empty applications array.
-  If neither document mentions AI, set headline to empty string "".
+- evidence_line: extract the candidate's SPECIFIC past experience from each solution section.
+  Look for "What I've already tested", "Related experience", or any sentence that names a
+  previous company and describes what the candidate did there.
+  Format: "At [Company], [what was done] → [result]" (max 20 words).
+  This is critical for credibility — do NOT return empty string if the section contains any
+  reference to past work. Search thoroughly.
+- ai_callout (per solution): If the solution mentions AI, automation, or tooling innovation,
+  extract a one-sentence callout: "[Tool/category] for [use case] → [impact]".
+  Also check the JOB DESCRIPTION below — if it mentions AI/automation and the solution could
+  benefit from AI, generate a concrete callout even if the diagnostic didn't explicitly mention one.
+  Format: "[AI tool category] for [specific use case] → [expected metric improvement]"
+  Set to empty string "" only if no AI angle applies to this specific problem.
 - first_30_days: extract exactly 3 items. Use the "First 30 Days" section if it exists.
 - insight: extract from the "Non-obvious" or "Insight" section.
 - ALL text must be SHORT. This is for presentation slides, not a document."""
@@ -667,7 +663,7 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
                 model=HAIKU_MODEL,
                 max_tokens=2500,
                 messages=[{"role": "user", "content": CONDENSE_FOR_SLIDES_PROMPT.format(
-                    markdown=markdown[:8000],
+                    markdown=markdown[:12000],
                     jd_context=jd_context,
                 )}],
             )
@@ -679,6 +675,12 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
             result = _try_parse_json(text, container="object")
             if result and result.get("solutions"):
                 console.print(f"  [green]Slide data condensed: {len(result['solutions'])} solutions[/green]")
+                # Validate critical fields
+                for i, sol in enumerate(result.get("solutions", [])):
+                    if not sol.get("evidence_line"):
+                        console.print(f"  [yellow]Warning: solution {i+1} has no evidence_line[/yellow]")
+                    if not sol.get("ai_callout"):
+                        console.print(f"  [yellow]Warning: solution {i+1} has no ai_callout[/yellow]")
                 return result
 
             console.print(f"  [yellow]Slide JSON parse failed (attempt {attempt + 1})[/yellow]")
@@ -770,6 +772,7 @@ def _fallback_slide_extraction(markdown: str) -> dict:
             "key_metric": key_metric,
             "match_level": "",
             "evidence_line": "",
+            "ai_callout": "",
         })
 
     # Extract situation summary from what_i_see first paragraph
@@ -858,7 +861,6 @@ def _fallback_slide_extraction(markdown: str) -> dict:
         "situation_summary": situation_summary,
         "stat_cards": stat_cards,
         "solutions": solutions,
-        "ai_tooling": {"headline": "", "applications": []},
         "insight": {"claim": claim, "implication": implication},
         "first_30_days": first_30,
     }

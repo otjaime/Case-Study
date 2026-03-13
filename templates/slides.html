@@ -280,36 +280,20 @@ body {
 .sol-accent-ninguno { border-top: 3pt solid #94a3b8; }
 
 /* -------------------------------------------------- */
-/* AI & Tooling slide                                 */
+/* AI callout (per solution, inline)                  */
 /* -------------------------------------------------- */
-.ai-grid {
-  display: flex;
-  gap: 10pt;
-  margin-top: 8pt;
-}
-.ai-card {
-  flex: 1;
+.ai-callout {
   background: #faf5ff;
-  border-radius: 5pt;
-  padding: 14pt 12pt;
-  border-top: 3pt solid #6366f1;
-}
-.ai-tool {
-  font-size: 11pt;
-  font-weight: 700;
-  color: #4338ca;
-  margin-bottom: 6pt;
-}
-.ai-usecase {
-  font-size: 9.5pt;
-  color: #334155;
-  line-height: 1.4;
-  margin-bottom: 6pt;
-}
-.ai-impact {
+  border-left: 3pt solid #6366f1;
+  border-radius: 0 4pt 4pt 0;
+  padding: 6pt 10pt;
+  margin-top: 6pt;
   font-size: 8.5pt;
-  font-weight: 600;
-  color: #6366f1;
+  color: #4338ca;
+  line-height: 1.4;
+}
+.ai-callout .ai-icon {
+  margin-right: 3pt;
 }
 
 /* -------------------------------------------------- */
@@ -389,12 +373,16 @@ body {
 /* Slide 7: Non-obvious Insight                       */
 /* -------------------------------------------------- */
 .slide-insight {
-  padding-top: 32mm;
+  background: #0f1923;
+  padding: 32mm 24mm;
+}
+.slide-insight .slide-label {
+  color: #f59e0b;
 }
 .insight-claim {
   font-size: 18pt;
   font-weight: 700;
-  color: #0f1923;
+  color: #f1f5f9;
   line-height: 1.4;
   border-left: 3pt solid #f59e0b;
   padding-left: 16pt;
@@ -403,7 +391,7 @@ body {
 }
 .insight-implication {
   font-size: 11pt;
-  color: #64748b;
+  color: #94a3b8;
   padding-left: 19pt;
   max-width: 80%;
   line-height: 1.5;
@@ -543,6 +531,9 @@ body {
       {% if sol.evidence_line %}
       <div class="evidence-box">{{ sol.evidence_line }}</div>
       {% endif %}
+      {% if sol.ai_callout %}
+      <div class="ai-callout"><span class="ai-icon">&#9889;</span> {{ sol.ai_callout }}</div>
+      {% endif %}
     </div>
     <div class="sol-right">
       {% if sol.key_metric and sol.key_metric.value %}
@@ -565,34 +556,9 @@ body {
 {% endfor %}
 
 <!-- ================================================================ -->
-<!-- SLIDE: AI & Tooling (conditional)                                -->
-<!-- ================================================================ -->
-{% set ai_visible = slide_data.ai_tooling and slide_data.ai_tooling.headline %}
-{% if ai_visible %}
-<div class="slide">
-  <div class="slide-label" style="color: #6366f1;">AI &amp; Tooling Strategy</div>
-  <div class="slide-headline" style="font-size:15pt; margin-bottom:14pt;">{{ slide_data.ai_tooling.headline }}</div>
-  {% if slide_data.ai_tooling.applications %}
-  <div class="ai-grid">
-    {% for app in slide_data.ai_tooling.applications %}
-    <div class="ai-card">
-      <div class="ai-tool">{{ app.tool_or_category }}</div>
-      <div class="ai-usecase">{{ app.use_case }}</div>
-      {% if app.impact %}<div class="ai-impact">{{ app.impact }}</div>{% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-  <div class="page-num">{{ (slide_data.solutions|length) + 3 }}</div>
-  <div class="footer-bar"></div>
-</div>
-{% endif %}
-
-{% set pg_offset = (slide_data.solutions|length) + 3 + (1 if ai_visible else 0) %}
-
-<!-- ================================================================ -->
 <!-- SLIDE: Experience Match                                          -->
 <!-- ================================================================ -->
+{% set pg_offset = (slide_data.solutions|length) + 3 %}
 {% set total = (match_data.alto or 0) + (match_data.medio or 0) + (match_data.bajo or 0) + (match_data.ninguno or 0) %}
 <div class="slide">
   <div class="slide-label">Experience Match</div>
