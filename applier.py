@@ -82,6 +82,7 @@ Respond ONLY with valid JSON matching this schema exactly:
 {{
   "nombre": "full name",
   "rol_actual": "current or most recent role + company",
+  "tagline": "one-liner career summary for a job application (e.g. '10+ years scaling B2B SaaS growth teams'). Combine years of experience + core domain. Max 10 words.",
   "empresas": [
     {{
       "empresa": "company name",

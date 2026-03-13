@@ -472,7 +472,7 @@ def generate_deck_pdf(markdown: str, profile: dict, company_name: str,
     header_profile = _parse_header_profile(sections.get("opening", ""))
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
+    current_role = profile.get("tagline", "") or profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
@@ -598,6 +598,8 @@ EXTRACTION RULES:
 - actions: extract exactly 2 (the two most impactful problems). The headline must be the
   PROBLEM being solved, not the deliverable. ORDERING: preserve the document's order — the
   problem with the most severe near-term business consequences comes first.
+  Headline must be grammatically unambiguous — use a colon to separate problem from scope
+  if needed (e.g. "Resolve brand split: enterprise vs. services buyers").
 - approach_bullets: EXACTLY 3 items. NEVER 4 or more. Each is one concrete action (max 12 words).
   NOT prose sentences — shorthand like "Deploy geo-holdout tests across top 5 DMAs."
   Each bullet should layer a different dimension: channel/tool, mechanism/metric, timeline/outcome.
@@ -916,7 +918,7 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
 
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
+    current_role = profile.get("tagline", "") or profile.get("rol_actual", "") or header_profile.get("rol_actual", "")
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
