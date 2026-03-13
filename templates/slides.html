@@ -191,24 +191,31 @@ body {
 .sol-bullets {
   list-style: none;
   padding: 0;
+  counter-reset: sol-step;
 }
 .sol-bullets li {
   font-size: 10.5pt;
   color: #334155;
-  padding: 7pt 0 7pt 16pt;
+  padding: 7pt 0 7pt 22pt;
   border-bottom: 1px solid #f1f5f9;
   position: relative;
   line-height: 1.4;
+  counter-increment: sol-step;
 }
 .sol-bullets li::before {
-  content: "";
+  content: counter(sol-step);
   position: absolute;
   left: 0;
-  top: 12pt;
-  width: 5pt;
-  height: 5pt;
+  top: 7pt;
+  width: 14pt;
+  height: 14pt;
   background: #3b82f6;
   border-radius: 50%;
+  color: #ffffff;
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-align: center;
+  line-height: 14pt;
 }
 
 .metric-card {
@@ -254,12 +261,55 @@ body {
 .match-ninguno .match-dot { background: #94a3b8; }
 .match-ninguno { color: #94a3b8; }
 
-.evidence-line {
-  font-size: 8pt;
-  color: #64748b;
+.evidence-box {
+  background: #f0f9ff;
+  border-left: 3pt solid #3b82f6;
+  border-radius: 0 4pt 4pt 0;
+  padding: 8pt 10pt;
+  margin-top: 10pt;
+  font-size: 8.5pt;
+  color: #1e40af;
   font-style: italic;
-  margin-top: 6pt;
   line-height: 1.4;
+}
+
+/* Match-level top accent on solution slides */
+.sol-accent-alto { border-top: 3pt solid #16a34a; }
+.sol-accent-medio { border-top: 3pt solid #f59e0b; }
+.sol-accent-bajo { border-top: 3pt solid #fb923c; }
+.sol-accent-ninguno { border-top: 3pt solid #94a3b8; }
+
+/* -------------------------------------------------- */
+/* AI & Tooling slide                                 */
+/* -------------------------------------------------- */
+.ai-grid {
+  display: flex;
+  gap: 10pt;
+  margin-top: 8pt;
+}
+.ai-card {
+  flex: 1;
+  background: #faf5ff;
+  border-radius: 5pt;
+  padding: 14pt 12pt;
+  border-top: 3pt solid #6366f1;
+}
+.ai-tool {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #4338ca;
+  margin-bottom: 6pt;
+}
+.ai-usecase {
+  font-size: 9.5pt;
+  color: #334155;
+  line-height: 1.4;
+  margin-bottom: 6pt;
+}
+.ai-impact {
+  font-size: 8.5pt;
+  font-weight: 600;
+  color: #6366f1;
 }
 
 /* -------------------------------------------------- */
@@ -473,7 +523,7 @@ body {
 <!-- SLIDES 3-5: Solution slides                                      -->
 <!-- ================================================================ -->
 {% for sol in slide_data.solutions %}
-<div class="slide">
+<div class="slide{% if sol.match_level %} sol-accent-{{ sol.match_level }}{% endif %}">
   <div class="sol-header">
     <div class="sol-number">{{ "%02d"|format(loop.index) }}</div>
     <div class="sol-title-group">
@@ -490,6 +540,9 @@ body {
         {% endfor %}
       </ul>
       {% endif %}
+      {% if sol.evidence_line %}
+      <div class="evidence-box">{{ sol.evidence_line }}</div>
+      {% endif %}
     </div>
     <div class="sol-right">
       {% if sol.key_metric and sol.key_metric.value %}
@@ -504,9 +557,6 @@ body {
         {{ sol.match_level | replace('alto','Strong Match') | replace('medio','Method Match') | replace('bajo','Adjacent') | replace('ninguno','Reasoning Only') }}
       </div>
       {% endif %}
-      {% if sol.evidence_line %}
-      <div class="evidence-line">{{ sol.evidence_line }}</div>
-      {% endif %}
     </div>
   </div>
   <div class="page-num">{{ loop.index + 2 }}</div>
@@ -515,7 +565,33 @@ body {
 {% endfor %}
 
 <!-- ================================================================ -->
-<!-- SLIDE 6: Experience Match                                        -->
+<!-- SLIDE: AI & Tooling (conditional)                                -->
+<!-- ================================================================ -->
+{% set ai_visible = slide_data.ai_tooling and slide_data.ai_tooling.headline %}
+{% if ai_visible %}
+<div class="slide">
+  <div class="slide-label" style="color: #6366f1;">AI &amp; Tooling Strategy</div>
+  <div class="slide-headline" style="font-size:15pt; margin-bottom:14pt;">{{ slide_data.ai_tooling.headline }}</div>
+  {% if slide_data.ai_tooling.applications %}
+  <div class="ai-grid">
+    {% for app in slide_data.ai_tooling.applications %}
+    <div class="ai-card">
+      <div class="ai-tool">{{ app.tool_or_category }}</div>
+      <div class="ai-usecase">{{ app.use_case }}</div>
+      {% if app.impact %}<div class="ai-impact">{{ app.impact }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="page-num">{{ (slide_data.solutions|length) + 3 }}</div>
+  <div class="footer-bar"></div>
+</div>
+{% endif %}
+
+{% set pg_offset = (slide_data.solutions|length) + 3 + (1 if ai_visible else 0) %}
+
+<!-- ================================================================ -->
+<!-- SLIDE: Experience Match                                          -->
 <!-- ================================================================ -->
 {% set total = (match_data.alto or 0) + (match_data.medio or 0) + (match_data.bajo or 0) + (match_data.ninguno or 0) %}
 <div class="slide">
@@ -559,12 +635,12 @@ body {
   </div>
   {% endif %}
 
-  <div class="page-num">{{ (slide_data.solutions|length) + 3 }}</div>
+  <div class="page-num">{{ pg_offset }}</div>
   <div class="footer-bar"></div>
 </div>
 
 <!-- ================================================================ -->
-<!-- SLIDE 7: Non-obvious Insight                                     -->
+<!-- SLIDE: Non-obvious Insight                                       -->
 <!-- ================================================================ -->
 {% if slide_data.insight and slide_data.insight.claim %}
 <div class="slide slide-insight">
@@ -573,13 +649,13 @@ body {
   {% if slide_data.insight.implication %}
   <div class="insight-implication">{{ slide_data.insight.implication }}</div>
   {% endif %}
-  <div class="page-num">{{ (slide_data.solutions|length) + 4 }}</div>
+  <div class="page-num">{{ pg_offset + 1 }}</div>
   <div class="footer-bar"></div>
 </div>
 {% endif %}
 
 <!-- ================================================================ -->
-<!-- SLIDE 8: First 30 Days                                           -->
+<!-- SLIDE: First 30 Days                                             -->
 <!-- ================================================================ -->
 {% if slide_data.first_30_days %}
 <div class="slide">
@@ -594,13 +670,13 @@ body {
     </div>
     {% endfor %}
   </div>
-  <div class="page-num">{{ (slide_data.solutions|length) + 5 }}</div>
+  <div class="page-num">{{ pg_offset + 2 }}</div>
   <div class="footer-bar"></div>
 </div>
 {% endif %}
 
 <!-- ================================================================ -->
-<!-- SLIDE 9: Close                                                   -->
+<!-- SLIDE: Close                                                     -->
 <!-- ================================================================ -->
 <div class="slide slide-close">
   <div class="cover-accent"></div>

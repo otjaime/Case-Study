@@ -291,12 +291,17 @@ Respond ONLY with a JSON array:
 ]
 
 MATCHING RULES:
-- "alto": Direct match — same methodology AND similar problem, with measurable results.
+- "alto": Same functional area with demonstrated results. The candidate has done THIS type of work
+  before and can point to measurable outcomes. Industry and company stage may differ.
+  Example: Problem is "paid acquisition scaling." Candidate scaled paid acquisition at a different DTC brand → alto.
   Example: Problem is "channel cannibalization between DTC and retail." Candidate managed DTC-to-retail transition → alto.
-- "medio": Methodological match — different domain but same analytical approach or framework.
+  Example: Problem is "retention and lifecycle." Candidate built lifecycle programs with measurable LTV improvement → alto.
+  Key test: Would a hiring manager see this experience and say "they've done this before"?
+- "medio": Adjacent function or same function in a very different context. The methodology transfers
+  but the candidate hasn't solved THIS specific type of problem with measurable results.
   Example: Problem is "no cross-channel attribution." Candidate built B2B attribution → medio (same method, different channel).
-  Example: Problem is "DTC retention declining." Candidate optimized repeat purchase rate in a different category → medio.
-- "bajo": Adjacent problem — candidate worked in the space but on different problems.
+  Example: Problem is "scaling a growth team." Candidate built a different type of marketing team → medio.
+- "bajo": Worked in the space but on meaningfully different problems.
 - "ninguno": No transferable experience found — be honest.
 
 CRITICAL:
@@ -495,10 +500,15 @@ CRITICAL: Organize this section by BUSINESS PROBLEM, not by task number or deliv
 Each sub-section header should be the problem you're solving (e.g., "Fixing the pricing architecture \
 before it collapses the margin stack" not "Task 1: Omnichannel Pricing").
 
-DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the problem with the strongest experience match (alto), \
-~30% on the second strongest, ~20% on the remaining. Depth on your strongest match > breadth.
-Lead with the most critical problem if your strongest match aligns with it. If not, lead with the \
-most critical problem but go deepest on your strongest match.
+ORDERING: Section 3 MUST be ordered by BUSINESS URGENCY. The problem with the most severe \
+near-term consequences goes first, regardless of experience match level. Use the \
+consequence_if_ignored field from the business problems to determine urgency ordering.
+
+DEPTH DISTRIBUTION: Spend ~50% of Section 3 on the problem where you have the strongest \
+experience match (alto), ~30% on the second strongest, ~20% on the remaining. \
+If your strongest match is NOT the most urgent problem, it still appears in its urgency position \
+but gets the most word count. A section can be deep without being first — urgency determines \
+position, match determines depth.
 
 JD COVERAGE RULE: The case study was built from the job description. Every task in the case represents \
 a JD requirement the hiring manager cares about. After writing your deep-dive solutions for each \
@@ -516,6 +526,15 @@ in your problem-by-problem discussion? If so, weave them in:
 COMPETITIVE RESPONSE RULE: If COMPETITIVE CONTEXT is provided above, at least ONE problem section \
 MUST directly address how to win against the named competitor(s). Don't just identify the competitive \
 threat — propose a specific counter-strategy (positioning, pricing, messaging, or distribution advantage).
+
+AI/TOOLING INNOVATION RULE: Read the JOB DESCRIPTION text provided above. If it mentions AI, \
+automation, tooling innovation, or "leveraging AI," you MUST include a concrete paragraph in at \
+least ONE problem solution showing how AI or automation would be applied. Be specific: name the \
+tool category or specific tool, describe the use case, and state the expected impact. \
+Example: "Deploy an AI-powered creative testing pipeline (e.g., Jasper for variant generation + \
+automated ROAS feedback loops) to compress the creative production cycle from 2 weeks to 3 days." \
+Do NOT add a separate AI section — weave it into the most relevant problem solution. \
+A senior role that explicitly requires AI fluency cannot have zero AI mentions in the deliverable.
 
 For each problem where nivel_match is "alto" or "medio":
 

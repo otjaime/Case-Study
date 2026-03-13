@@ -548,6 +548,8 @@ You are extracting KEY DATA POINTS and SHORT HEADLINES — not summarizing parag
 DIAGNOSTIC DOCUMENT:
 {markdown}
 
+{jd_context}
+
 Respond ONLY with valid JSON matching this schema:
 {{
   "situation_summary": "One sentence (max 15 words) capturing the company's inflection point",
@@ -570,6 +572,16 @@ Respond ONLY with valid JSON matching this schema:
       "evidence_line": "one sentence: what the candidate did + result (max 20 words)"
     }}
   ],
+  "ai_tooling": {{
+    "headline": "AI/tooling strategy headline — max 8 words, or empty string if no AI/tooling mentions",
+    "applications": [
+      {{
+        "tool_or_category": "name of tool or tool category",
+        "use_case": "what it does for this company — max 15 words",
+        "impact": "expected result — max 10 words"
+      }}
+    ]
+  }},
   "insight": {{
     "claim": "the contrarian observation — one sentence, max 25 words",
     "implication": "what to do about it — one sentence, max 15 words"
@@ -587,11 +599,18 @@ EXTRACTION RULES:
   key ratio (CPA, retention, LTV), channel concentration, and a risk metric. Do NOT invent numbers.
 - solutions: one per problem section (typically 3). The headline must be the PROBLEM being
   solved, not the deliverable. Each bullet is a specific action, not a description.
+  ORDERING: Solutions MUST preserve the document's order — the problem with the most severe
+  near-term business consequences comes first. Do NOT reorder by match level.
 - match_level: if the section references the candidate's past experience with concrete results,
   it's "alto". If it references methodology transfer, "medio". If it says "I haven't done exactly
   this", "bajo". If it uses benchmarks/reasoning only, "ninguno".
 - evidence_line: extract the candidate's SPECIFIC experience cited in each solution section.
   Must reference a company name and a result. If none cited, use empty string "".
+- ai_tooling: ONLY populate if the diagnostic mentions AI, automation, or tooling innovation,
+  OR if a JOB DESCRIPTION section is provided below that explicitly requires AI/tooling fluency.
+  Extract concrete applications (tool + use case + impact). If the diagnostic has no AI mentions
+  but the JD requires it, set headline to "AI & Tooling Strategy" with empty applications array.
+  If neither document mentions AI, set headline to empty string "".
 - first_30_days: extract exactly 3 items. Use the "First 30 Days" section if it exists.
 - insight: extract from the "Non-obvious" or "Insight" section.
 - ALL text must be SHORT. This is for presentation slides, not a document."""
@@ -635,17 +654,21 @@ def _try_parse_json(text: str, container: str = "object"):
         return None
 
 
-async def _condense_for_slides(markdown: str) -> dict | None:
+async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
     """Condense diagnostic markdown into slide-ready data using Haiku."""
     client = anthropic.AsyncAnthropic()
+    jd_context = ""
+    if jd_text:
+        jd_context = f"JOB DESCRIPTION (for AI/tooling detection):\n{jd_text[:3000]}"
 
     for attempt in range(2):
         try:
             message = await client.messages.create(
                 model=HAIKU_MODEL,
-                max_tokens=2000,
+                max_tokens=2500,
                 messages=[{"role": "user", "content": CONDENSE_FOR_SLIDES_PROMPT.format(
-                    markdown=markdown[:8000]
+                    markdown=markdown[:8000],
+                    jd_context=jd_context,
                 )}],
             )
             text = message.content[0].text.strip()
@@ -835,13 +858,15 @@ def _fallback_slide_extraction(markdown: str) -> dict:
         "situation_summary": situation_summary,
         "stat_cards": stat_cards,
         "solutions": solutions,
+        "ai_tooling": {"headline": "", "applications": []},
         "insight": {"claim": claim, "implication": implication},
         "first_30_days": first_30,
     }
 
 
 async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: str,
-                                   job_title: str, mapping_quality: dict) -> bytes:
+                                   job_title: str, mapping_quality: dict,
+                                   jd_text: str = "") -> bytes:
     """Generate a landscape 16:9 slide deck PDF from diagnostic markdown.
 
     Uses Claude Haiku to condense the diagnostic into slide-ready data,
@@ -851,7 +876,7 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
 
     # Step 1: Condense via Haiku
     console.print("[bold]Condensing diagnostic for slides...[/bold]")
-    slide_data = await _condense_for_slides(markdown)
+    slide_data = await _condense_for_slides(markdown, jd_text=jd_text)
 
     if slide_data is None:
         console.print("  [yellow]Haiku failed — using regex fallback[/yellow]")

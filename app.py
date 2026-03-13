@@ -245,6 +245,7 @@ async def export_deck(request: Request):
     job_title = body.get("job_title", "").strip()
     mapping_quality = body.get("mapping_quality") or {}
     deck_format = body.get("format", "slides")
+    jd_text = body.get("jd_text", "").strip()
 
     if not markdown:
         return JSONResponse(
@@ -260,6 +261,7 @@ async def export_deck(request: Request):
                 company_name=company_name,
                 job_title=job_title,
                 mapping_quality=mapping_quality,
+                jd_text=jd_text,
             )
             slug = (company_name or "company").lower().replace(" ", "-")[:30]
             filename = f"slides-{slug}.pdf"
