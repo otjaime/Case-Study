@@ -644,6 +644,11 @@ def _try_parse_json(text: str, container: str = "object"):
     # Attempt truncation repair
     fragment = text[start:]
     stripped = fragment.rstrip()
+
+    # Close any open string (truncated mid-value)
+    if stripped.count('"') % 2 == 1:
+        stripped += '"'
+
     if stripped and stripped[-1] not in (end_char, start_char, ",", '"',
                                          "e", "l", "0", "1", "2", "3",
                                          "4", "5", "6", "7", "8", "9"):
@@ -672,7 +677,7 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
         try:
             message = await client.messages.create(
                 model=HAIKU_MODEL,
-                max_tokens=3500,
+                max_tokens=4500,
                 messages=[{"role": "user", "content": CONDENSE_FOR_SLIDES_PROMPT.format(
                     markdown=markdown[:12000],
                     jd_context=jd_context,
