@@ -503,7 +503,11 @@ def generate_deck_pdf(markdown: str, profile: dict, company_name: str,
     header_profile = _parse_header_profile(sections.get("opening", ""))
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("tagline", "") or _synthesize_tagline(profile) or header_profile.get("rol_actual", "")
+    current_role = (
+        profile.get("tagline", "")
+        or _synthesize_tagline(profile)
+        or header_profile.get("rol_actual", "")
+    )
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
@@ -620,7 +624,8 @@ Respond ONLY with valid JSON matching this schema:
       "reason": "why this first — max 12 words"
     }}
   ],
-  "close_line": "One sentence referencing this company's central problem. Format: 'I'd welcome the chance to go deeper on [specific problem from diagnosis].' Max 20 words."
+  "close_line": "One sentence referencing this company's central problem. Format: 'I'd welcome the chance to go deeper on [specific problem from diagnosis].' Max 15 words.",
+  "candidate_tagline": "One-liner career summary of the candidate (e.g. '10+ years scaling B2B SaaS growth teams'). Combine years of experience + core domain from the document. Max 10 words. If candidate background is not in the document, use empty string."
 }}
 
 EXTRACTION RULES:
@@ -656,9 +661,13 @@ EXTRACTION RULES:
 - first_30_days: extract exactly 3 items from the "First 30 Days" section.
   Each must be a DECISION that changes something, not an audit or analysis task.
   "Audit X" or "Review Y" is NOT a decision. "Kill channel X", "Hire role Y", "Ship V1 of Z" is.
-- close_line: must reference this company's specific central problem, not a generic offer.
+- close_line: must reference this company's specific central problem, not a generic offer. MAX 15 WORDS.
   Bad: "I'd welcome the chance to go deeper on any of these areas."
-  Good: "I'd welcome the chance to go deeper on resolving the brand-services tension."
+  Good: "I'd welcome the chance to go deeper on the brand-services tension."
+- candidate_tagline: synthesize from the candidate's background mentioned in the diagnostic.
+  Format: "[N]+ years in [domain] & [domain]" or "[seniority]-level [domain] leader".
+  NOT the raw job title (e.g. NOT "Marketing Manager at Company X").
+  If no candidate background is found, return empty string.
 - key_metric: must be a concrete anchored number ($, %, x, ratio). NEVER a vague range
   like "6-12 months" or "several quarters". If no concrete number exists for this problem,
   use a derived threshold (e.g. "$100 CPA ceiling", "35% churn rate").
@@ -958,7 +967,12 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
 
     candidate_name = profile.get("nombre", "") or header_profile.get("nombre", "")
     contact = profile.get("contacto", "") or header_profile.get("contacto", "")
-    current_role = profile.get("tagline", "") or _synthesize_tagline(profile) or header_profile.get("rol_actual", "")
+    current_role = (
+        profile.get("tagline", "")
+        or slide_data.get("candidate_tagline", "")
+        or _synthesize_tagline(profile)
+        or header_profile.get("rol_actual", "")
+    )
     skills = profile.get("skills_funcionales", [])[:8]
 
     if not company_name:
