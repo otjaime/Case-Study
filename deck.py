@@ -564,9 +564,9 @@ Respond ONLY with valid JSON matching this schema:
     {{
       "headline": "the PROBLEM being solved — active voice, max 8 words",
       "approach_bullets": [
-        "Bullet 1: what to build/change — max 15 words. Name the channel, tool, or framework.",
-        "Bullet 2: second move — max 15 words. Name the mechanism or metric.",
-        "Bullet 3: validation step — max 15 words. Name the timeline or expected outcome."
+        "Bullet 1: what to build/change — max 12 words. Name the channel, tool, or framework.",
+        "Bullet 2: second move — max 12 words. Name the mechanism or metric.",
+        "Bullet 3: validation step — max 12 words. Name the timeline or expected outcome."
       ],
       "por_que": "one sentence: what happens to the business if this isn't fixed. Consequence framing — name the metric that degrades.",
       "tested": "one sentence: candidate's prior experience evidence. Format: 'At [Company], [action] → [result]'. Empty string ONLY if truly no evidence.",
@@ -585,10 +585,11 @@ Respond ONLY with valid JSON matching this schema:
   }},
   "first_30_days": [
     {{
-      "action": "specific decision or action — max 8 words",
+      "action": "a DECISION with consequences — max 8 words (not an audit or analysis task)",
       "reason": "why this first — max 12 words"
     }}
-  ]
+  ],
+  "close_line": "One sentence referencing this company's central problem. Format: 'I'd welcome the chance to go deeper on [specific problem from diagnosis].' Max 20 words."
 }}
 
 EXTRACTION RULES:
@@ -597,8 +598,8 @@ EXTRACTION RULES:
 - actions: extract exactly 2 (the two most impactful problems). The headline must be the
   PROBLEM being solved, not the deliverable. ORDERING: preserve the document's order — the
   problem with the most severe near-term business consequences comes first.
-- approach_bullets: exactly 3 items. Each is one concrete action (max 15 words).
-  NOT prose sentences — shorthand like "Deploy geo-holdout tests across top 5 DMAs for incrementality."
+- approach_bullets: EXACTLY 3 items. NEVER 4 or more. Each is one concrete action (max 12 words).
+  NOT prose sentences — shorthand like "Deploy geo-holdout tests across top 5 DMAs."
   Each bullet should layer a different dimension: channel/tool, mechanism/metric, timeline/outcome.
 - por_que: frame as consequence of NOT acting. "Without this, [metric] degrades by [amount]."
   NOT "This will improve [metric]."
@@ -611,6 +612,11 @@ EXTRACTION RULES:
 - insight: split into 4 parts. titulo = the claim. convencional = what most people think.
   realidad = the counterintuitive truth. consecuencia = what to do about it.
 - first_30_days: extract exactly 3 items from the "First 30 Days" section.
+  Each must be a DECISION that changes something, not an audit or analysis task.
+  "Audit X" or "Review Y" is NOT a decision. "Kill channel X", "Hire role Y", "Ship V1 of Z" is.
+- close_line: must reference this company's specific central problem, not a generic offer.
+  Bad: "I'd welcome the chance to go deeper on any of these areas."
+  Good: "I'd welcome the chance to go deeper on resolving the brand-services tension."
 - key_metric: must be a concrete anchored number ($, %, x, ratio). NEVER a vague range
   like "6-12 months" or "several quarters". If no concrete number exists for this problem,
   use a derived threshold (e.g. "$100 CPA ceiling", "35% churn rate").
@@ -689,9 +695,14 @@ async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
                     # Normalize: if Haiku returned old "approach" string, split into bullets
                     if "approach_bullets" not in act and "approach" in act:
                         sentences = re.split(r'(?<=[.!?])\s+', act["approach"])
-                        act["approach_bullets"] = [_truncate_words(s, 15) for s in sentences[:3]]
+                        act["approach_bullets"] = [_truncate_words(s, 12) for s in sentences[:3]]
                     if not isinstance(act.get("approach_bullets"), list):
                         act["approach_bullets"] = [str(act.get("approach_bullets", ""))]
+                    # Enforce: max 3 bullets, max 12 words each
+                    act["approach_bullets"] = [_truncate_words(b, 12) for b in act["approach_bullets"][:3]]
+                # Ensure close_line exists
+                if not result.get("close_line"):
+                    result["close_line"] = ""
                 return result
 
             console.print(f"  [yellow]Slide JSON parse failed (attempt {attempt + 1})[/yellow]")
@@ -872,6 +883,7 @@ def _fallback_slide_extraction(markdown: str) -> dict:
             "consecuencia": consecuencia,
         },
         "first_30_days": first_30,
+        "close_line": "",
     }
 
 

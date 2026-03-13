@@ -774,7 +774,7 @@ body {
   </div>
   {% endif %}
   <div class="close-bar">
-    <div class="close-text">I'd welcome the chance to go deeper on any of these areas.</div>
+    <div class="close-text">{{ slide_data.close_line or "I'd welcome the chance to go deeper on any of these areas." }}</div>
     <div class="close-card">
       <div class="close-name">{{ candidate_name }}</div>
       {% if contact %}<div class="close-email">{{ contact }}</div>{% endif %}
