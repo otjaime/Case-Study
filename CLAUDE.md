@@ -25,6 +25,8 @@ Output rendered in browser with streaming + quality bar
   ↓  (optional)
 [deck.py] → presentation-style PDF deck   (WeasyPrint, no API cost)
   ↓  (optional)
+[pitch.py] → audio pitch narration   (Haiku script + ElevenLabs TTS, ~$0.02)
+  ↓  (optional)
 [video.py] → AI video explainer   (Haiku script + ElevenLabs TTS + HeyGen lip-sync)
 ```
 
@@ -62,7 +64,7 @@ The output reads as if it came from the company's hiring team:
 ## Project structure
 
 ```
-├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream, POST /export-deck, POST /generate-video, GET /video-status)
+├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream, POST /export-deck, POST /generate-pitch, POST /generate-video, GET /video-status)
 ├── main.py             # CLI entry point (--url, --name, --pdf)
 ├── decomposer.py       # JD decomposition → company_profile + requirements_map
 ├── research.py         # Exa + Firecrawl company research (industry-guided, cached)
@@ -71,6 +73,7 @@ The output reads as if it came from the company's hiring team:
 ├── generator.py        # Two-stage Claude generation + quality scoring
 ├── applier.py          # Transforms case study into personalized application document
 ├── deck.py             # Generates presentation-style PDF deck from diagnostic markdown
+├── pitch.py            # Audio pitch: slide-aligned narration (Haiku script + ElevenLabs TTS)
 ├── video.py            # AI video explainer: script (Haiku) → audio (ElevenLabs) → lip-sync (HeyGen)
 ├── output.py           # Markdown + PDF file output (CLI)
 ├── templates/
@@ -135,6 +138,15 @@ The output reads as if it came from the company's hiring team:
 - 5-7 page deck: cover (dark bg), diagnosis with stat cards, one page per problem, experience match visualization, close
 - CSS-only charts: horizontal bars, stat cards, colored match-level indicators
 - Zero API cost — uses data already computed during apply pipeline
+
+### pitch.py
+- Audio pitch generator: slide-aligned narration for the PDF deck
+- Reuses `condense_for_slides()` from deck.py and `generate_audio()` from video.py
+- `generate_pitch_script()` — Haiku generates 6-paragraph script (~290 words) from slide_data JSON
+- `generate_pitch()` — full pipeline: condense → script → TTS audio, returns {script, audio_b64, audio_available}
+- Prompt structured per-slide: cover (~20w), diagnosis (~60w), action 1 (~60w), action 2 (~60w), insight (~40w), close (~40w)
+- Graceful degradation: if ELEVENLABS_API_KEY missing, returns script-only (no audio)
+- Cost: ~$0.001 (Haiku) + ~$0.02 (ElevenLabs) = ~$0.021 per pitch
 
 ### video.py
 - AI video explainer pipeline: script → audio → lip-sync video

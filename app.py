@@ -16,6 +16,7 @@ from generator import generate_case_study, generate_case_study_streaming, score_
 from applier import generate_application_streaming
 from deck import generate_deck_pdf, generate_slide_deck_pdf
 from video import create_video_job, get_video_job, run_video_pipeline
+from pitch import generate_pitch
 
 load_dotenv(override=True)
 
@@ -284,6 +285,42 @@ async def export_deck(request: Request):
     except Exception as exc:
         return JSONResponse(
             {"error": f"PDF generation failed: {str(exc)}"},
+            status_code=500,
+        )
+
+
+@app.post("/generate-pitch")
+async def generate_pitch_endpoint(request: Request):
+    """Generate an audio pitch narration aligned to the slide deck."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid request body."}, status_code=400)
+
+    markdown = body.get("markdown", "").strip()
+    candidate_name = body.get("candidate_name", "").strip()
+    company_name = body.get("company_name", "").strip()
+    jd_text = body.get("jd_text", "").strip()
+    voice_pref = body.get("voice_pref", "female").strip()
+
+    if not markdown:
+        return JSONResponse(
+            {"error": "Diagnostic markdown is required."},
+            status_code=400,
+        )
+
+    try:
+        result = await generate_pitch(
+            markdown=markdown,
+            jd_text=jd_text,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            voice_pref=voice_pref,
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Pitch generation failed: {str(exc)}"},
             status_code=500,
         )
 

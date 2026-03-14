@@ -370,6 +370,52 @@
         }
 
         .video-btn:hover { opacity: 0.85; }
+
+        .pitch-btn {
+            background: #e67e22;
+            width: 100%;
+        }
+
+        .pitch-btn:hover { opacity: 0.85; }
+
+        .pitch-audio-player {
+            width: 100%;
+            margin-top: 12px;
+            border-radius: 8px;
+        }
+
+        .pitch-script {
+            margin-top: 12px;
+            padding: 16px;
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.7;
+            color: #444;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .pitch-script-toggle {
+            font-size: 12px;
+            color: #888;
+            cursor: pointer;
+            margin-top: 8px;
+            display: inline-block;
+            text-decoration: underline;
+        }
+
+        .pitch-no-audio {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #856404;
+        }
     </style>
 </head>
 <body>
@@ -456,6 +502,32 @@
             <div class="case-study" id="apply-output"></div>
             <div class="deck-actions" id="deck-actions" style="display:none; margin-top: 16px;">
                 <button class="deck-btn" id="deck-btn">Download Slide Deck</button>
+            </div>
+
+            <!-- Audio pitch section -->
+            <div id="pitch-section" style="display:none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e8e8e8;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Audio Pitch</h3>
+                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Generate a 2-minute narration that accompanies the slide deck — adds context beyond what's visual.</p>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Voice</label>
+                    <select id="pitch_voice" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
+                        <option value="female">Female (Rachel)</option>
+                        <option value="male">Male (Josh)</option>
+                    </select>
+                </div>
+                <button class="pitch-btn" id="pitch-btn">Generate Audio Pitch</button>
+                <div id="pitch-loading" style="display:none; margin-top: 12px; text-align: center; padding: 16px;">
+                    <div class="spinner" style="width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #e67e22; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px;"></div>
+                    <span id="pitch-loading-text" style="font-size: 13px; color: #666;">Generating pitch (~8 seconds)...</span>
+                </div>
+                <div id="pitch-result" style="display:none;">
+                    <audio id="pitch-audio" class="pitch-audio-player" controls></audio>
+                    <div id="pitch-no-audio" class="pitch-no-audio" style="display:none;"></div>
+                    <span class="pitch-script-toggle" id="pitch-script-toggle">Show script</span>
+                    <div class="pitch-script" id="pitch-script" style="display:none;"></div>
+                    <div style="margin-top: 8px; font-size: 12px; color: #999;" id="pitch-word-count"></div>
+                </div>
+                <div id="pitch-error" style="display:none; margin-top: 12px;" class="apply-warning"></div>
             </div>
 
             <!-- Video explainer section -->
@@ -920,6 +992,8 @@
                 applyBtn.disabled = false;
                 // Show deck download button
                 document.getElementById('deck-actions').style.display = 'block';
+                // Show audio pitch section
+                document.getElementById('pitch-section').style.display = 'block';
                 // Show video section
                 document.getElementById('video-section').style.display = 'block';
 
@@ -1078,6 +1152,90 @@
                 errorEl.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Generate Video Explainer';
+            }
+        });
+
+        // --- Audio Pitch ---
+        document.getElementById('pitch-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('pitch-btn');
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+            document.getElementById('pitch-error').style.display = 'none';
+            document.getElementById('pitch-result').style.display = 'none';
+            document.getElementById('pitch-loading').style.display = 'block';
+
+            try {
+                const response = await fetch('/generate-pitch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        markdown: applyMarkdown,
+                        candidate_name: (storedProfile && storedProfile.nombre) || '',
+                        company_name: storedCompanyName,
+                        jd_text: storedJdText,
+                        voice_pref: document.getElementById('pitch_voice').value,
+                    }),
+                });
+
+                const data = await response.json();
+
+                document.getElementById('pitch-loading').style.display = 'none';
+
+                if (data.error && !data.script) {
+                    throw new Error(data.error);
+                }
+
+                document.getElementById('pitch-result').style.display = 'block';
+
+                // Script display
+                if (data.script) {
+                    document.getElementById('pitch-script').textContent = data.script;
+                    document.getElementById('pitch-word-count').textContent = (data.word_count || 0) + ' words';
+                }
+
+                // Audio playback
+                if (data.audio_available && data.audio_b64) {
+                    const binaryStr = atob(data.audio_b64);
+                    const bytes = new Uint8Array(binaryStr.length);
+                    for (let i = 0; i < binaryStr.length; i++) {
+                        bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    document.getElementById('pitch-audio').src = audioUrl;
+                    document.getElementById('pitch-audio').style.display = 'block';
+                    document.getElementById('pitch-no-audio').style.display = 'none';
+                } else {
+                    // No audio — show warning and script
+                    document.getElementById('pitch-audio').style.display = 'none';
+                    const noAudioEl = document.getElementById('pitch-no-audio');
+                    noAudioEl.textContent = data.error || 'Audio unavailable — script is shown below.';
+                    noAudioEl.style.display = 'block';
+                    // Auto-show script when audio is unavailable
+                    document.getElementById('pitch-script').style.display = 'block';
+                    document.getElementById('pitch-script-toggle').textContent = 'Hide script';
+                }
+            } catch (err) {
+                document.getElementById('pitch-loading').style.display = 'none';
+                const errorEl = document.getElementById('pitch-error');
+                errorEl.textContent = 'Pitch generation failed: ' + err.message;
+                errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Audio Pitch';
+            }
+        });
+
+        // Script toggle
+        document.getElementById('pitch-script-toggle').addEventListener('click', () => {
+            const scriptEl = document.getElementById('pitch-script');
+            const toggleEl = document.getElementById('pitch-script-toggle');
+            if (scriptEl.style.display === 'none') {
+                scriptEl.style.display = 'block';
+                toggleEl.textContent = 'Hide script';
+            } else {
+                scriptEl.style.display = 'none';
+                toggleEl.textContent = 'Show script';
             }
         });
     </script>

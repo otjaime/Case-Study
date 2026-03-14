@@ -717,7 +717,7 @@ def _try_parse_json(text: str, container: str = "object"):
         return None
 
 
-async def _condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
+async def condense_for_slides(markdown: str, jd_text: str = "") -> dict | None:
     """Condense diagnostic markdown into slide-ready data using Haiku."""
     client = anthropic.AsyncAnthropic()
     jd_context = ""
@@ -779,7 +779,7 @@ def _truncate_words(text: str, max_words: int) -> str:
     return ' '.join(words[:max_words])
 
 
-def _fallback_slide_extraction(markdown: str) -> dict:
+def fallback_slide_extraction(markdown: str) -> dict:
     """Build slide data from regex parsing when Haiku is unavailable."""
     sections = _parse_diagnostic_sections(markdown)
     source_text = sections.get("what_i_see", "") or sections.get("opening", "")
@@ -955,11 +955,11 @@ async def generate_slide_deck_pdf(markdown: str, profile: dict, company_name: st
 
     # Step 1: Condense via Haiku
     console.print("[bold]Condensing diagnostic for slides...[/bold]")
-    slide_data = await _condense_for_slides(markdown, jd_text=jd_text)
+    slide_data = await condense_for_slides(markdown, jd_text=jd_text)
 
     if slide_data is None:
         console.print("  [yellow]Haiku failed — using regex fallback[/yellow]")
-        slide_data = _fallback_slide_extraction(markdown)
+        slide_data = fallback_slide_extraction(markdown)
 
     # Step 2: Extract profile and match data (same as generate_deck_pdf)
     sections = _parse_diagnostic_sections(markdown)
