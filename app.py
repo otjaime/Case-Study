@@ -364,18 +364,28 @@ async def generate_video(request: Request):
     company_name = body.get("company_name", "").strip()
     avatar_id = body.get("avatar_id", "").strip()
     voice_pref = body.get("voice_pref", "female").strip()
+    pitch_audio_b64 = body.get("pitch_audio_b64", "").strip()
 
     if not markdown:
         return JSONResponse({"error": "Diagnostic markdown is required."}, status_code=400)
     if not avatar_id:
         return JSONResponse({"error": "Avatar selection is required."}, status_code=400)
 
+    # Decode pitch audio if provided (reuse instead of calling ElevenLabs again)
+    existing_audio = None
+    if pitch_audio_b64:
+        import base64
+        try:
+            existing_audio = base64.b64decode(pitch_audio_b64)
+        except Exception:
+            pass
+
     job_id = create_video_job()
 
     # Launch pipeline as background task
     asyncio.create_task(
         run_video_pipeline(job_id, markdown, profile, company_name,
-                           avatar_id, voice_pref)
+                           avatar_id, voice_pref, existing_audio)
     )
 
     return JSONResponse({"job_id": job_id})

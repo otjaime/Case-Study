@@ -348,24 +348,32 @@ async def check_video_status_heygen(video_id: str) -> dict:
 
 async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
                              company_name: str, avatar_id: str,
-                             voice_pref: str = "female"):
-    """Run the full video pipeline: script → audio → video."""
+                             voice_pref: str = "female",
+                             existing_audio: bytes | None = None):
+    """Run the full video pipeline: script → audio → video.
+
+    If existing_audio is provided (e.g. from pitch), skips ElevenLabs TTS.
+    """
     job = video_jobs.get(job_id)
     if not job:
         return
 
     try:
-        # Step 1: Script
+        # Step 1: Script (still needed for HeyGen even if audio exists)
         job["status"] = "script"
         candidate_name = profile.get("nombre", "")
         script = await generate_script(markdown, candidate_name, company_name)
         job["script"] = script
         console.print(f"  [dim]Video script generated ({len(script.split())} words)[/dim]")
 
-        # Step 2: Audio
-        job["status"] = "audio"
-        audio_bytes = await generate_audio(script, voice_pref)
-        console.print(f"  [dim]Audio generated ({len(audio_bytes)} bytes)[/dim]")
+        # Step 2: Audio — reuse pitch audio if available, otherwise generate
+        if existing_audio:
+            audio_bytes = existing_audio
+            console.print(f"  [dim]Reusing pitch audio ({len(audio_bytes)} bytes)[/dim]")
+        else:
+            job["status"] = "audio"
+            audio_bytes = await generate_audio(script, voice_pref)
+            console.print(f"  [dim]Audio generated ({len(audio_bytes)} bytes)[/dim]")
 
         # Step 3: Video
         job["status"] = "video"
