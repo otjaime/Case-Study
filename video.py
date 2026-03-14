@@ -3,6 +3,7 @@
 import os
 import uuid
 import asyncio
+import time
 from datetime import datetime, timedelta
 
 import httpx
@@ -13,7 +14,7 @@ console = Console()
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
-# ElevenLabs pre-made voices
+# ElevenLabs pre-made voices (fallback when voice_pref is "female"/"male")
 VOICES = {
     "female": "21m00Tcm4TlvDq8ikWAM",  # Rachel
     "male": "TxGEqnHWrfWFTfGW9XjX",    # Josh
@@ -21,6 +22,106 @@ VOICES = {
 
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
 HEYGEN_API_URL = "https://api.heygen.com"
+
+# ---------------------------------------------------------------------------
+# Caches for API list fetchers (1-hour TTL)
+# ---------------------------------------------------------------------------
+
+_voices_cache: dict = {"data": None, "fetched_at": 0}
+_avatars_cache: dict = {"data": None, "fetched_at": 0}
+_CACHE_TTL = 3600  # 1 hour
+
+
+# ---------------------------------------------------------------------------
+# List fetchers
+# ---------------------------------------------------------------------------
+
+async def list_elevenlabs_voices() -> list[dict]:
+    """Fetch available voices from ElevenLabs API. Cached for 1 hour."""
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        return []
+
+    if _voices_cache["data"] is not None and (time.time() - _voices_cache["fetched_at"]) < _CACHE_TTL:
+        return _voices_cache["data"]
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{ELEVENLABS_API_URL}/voices",
+                headers={"xi-api-key": api_key},
+            )
+            if resp.status_code != 200:
+                console.print(f"  [yellow]ElevenLabs voices fetch failed: {resp.status_code}[/yellow]")
+                return _voices_cache["data"] or []
+
+            voices_raw = resp.json().get("voices", [])
+            voices = []
+            for v in voices_raw:
+                labels = v.get("labels", {})
+                voices.append({
+                    "voice_id": v["voice_id"],
+                    "name": v.get("name", "Unknown"),
+                    "category": v.get("category", ""),
+                    "gender": labels.get("gender", ""),
+                    "accent": labels.get("accent", ""),
+                    "preview_url": v.get("preview_url", ""),
+                })
+
+            _voices_cache["data"] = voices
+            _voices_cache["fetched_at"] = time.time()
+            return voices
+
+    except Exception as exc:
+        console.print(f"  [yellow]ElevenLabs voices error: {exc}[/yellow]")
+        return _voices_cache["data"] or []
+
+
+async def list_heygen_avatars() -> dict:
+    """Fetch available avatars from HeyGen API. Cached for 1 hour."""
+    api_key = os.environ.get("HEYGEN_API_KEY")
+    if not api_key:
+        return {"avatars": [], "talking_photos": []}
+
+    if _avatars_cache["data"] is not None and (time.time() - _avatars_cache["fetched_at"]) < _CACHE_TTL:
+        return _avatars_cache["data"]
+
+    result = {"avatars": [], "talking_photos": []}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{HEYGEN_API_URL}/v2/avatars",
+                headers={"x-api-key": api_key},
+            )
+            if resp.status_code != 200:
+                console.print(f"  [yellow]HeyGen avatars fetch failed: {resp.status_code}[/yellow]")
+                return _avatars_cache["data"] or result
+
+            data = resp.json().get("data", {})
+
+            for av in data.get("avatars", []):
+                result["avatars"].append({
+                    "avatar_id": av.get("avatar_id", ""),
+                    "name": av.get("avatar_name", "Unknown"),
+                    "gender": av.get("gender", ""),
+                    "preview_image_url": av.get("preview_image_url", ""),
+                })
+
+            for tp in data.get("talking_photos", []):
+                result["talking_photos"].append({
+                    "talking_photo_id": tp.get("talking_photo_id", ""),
+                    "name": tp.get("talking_photo_name", "Unknown"),
+                    "preview_image_url": tp.get("preview_image_url", ""),
+                })
+
+            _avatars_cache["data"] = result
+            _avatars_cache["fetched_at"] = time.time()
+            return result
+
+    except Exception as exc:
+        console.print(f"  [yellow]HeyGen avatars error: {exc}[/yellow]")
+        return _avatars_cache["data"] or result
 
 # ---------------------------------------------------------------------------
 # In-memory job store
@@ -109,7 +210,9 @@ async def generate_audio(script: str, voice_pref: str = "female") -> bytes:
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not set")
 
-    voice_id = VOICES.get(voice_pref, VOICES["female"])
+    # If voice_pref looks like a voice_id (long string), use directly.
+    # Otherwise fall back to named presets for backward compat with pitch.py.
+    voice_id = voice_pref if len(voice_pref) > 10 else VOICES.get(voice_pref, VOICES["female"])
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -136,16 +239,38 @@ async def generate_audio(script: str, voice_pref: str = "female") -> bytes:
 # Step 3: Lip-sync video generation (HeyGen)
 # ---------------------------------------------------------------------------
 
-async def generate_video_heygen(audio_bytes: bytes, photo_bytes: bytes) -> str:
-    """Submit a lip-sync video generation job to HeyGen. Returns video_id."""
+async def generate_video_heygen(audio_bytes: bytes, avatar_id: str) -> str:
+    """Submit a lip-sync video generation job to HeyGen. Returns video_id.
+
+    avatar_id can be:
+      - "avatar:<id>" → uses type "avatar"
+      - "talking_photo:<id>" → uses type "talking_photo"
+      - bare id → defaults to type "avatar"
+    """
     import base64
 
     api_key = os.environ.get("HEYGEN_API_KEY")
     if not api_key:
         raise ValueError("HEYGEN_API_KEY not set")
 
+    # Parse avatar type prefix
+    if avatar_id.startswith("talking_photo:"):
+        character = {
+            "type": "talking_photo",
+            "talking_photo_id": avatar_id.split(":", 1)[1],
+        }
+    elif avatar_id.startswith("avatar:"):
+        character = {
+            "type": "avatar",
+            "avatar_id": avatar_id.split(":", 1)[1],
+        }
+    else:
+        character = {
+            "type": "avatar",
+            "avatar_id": avatar_id,
+        }
+
     audio_b64 = base64.b64encode(audio_bytes).decode()
-    photo_b64 = base64.b64encode(photo_bytes).decode()
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -156,10 +281,7 @@ async def generate_video_heygen(audio_bytes: bytes, photo_bytes: bytes) -> str:
             },
             json={
                 "video_inputs": [{
-                    "character": {
-                        "type": "photo",
-                        "photo_url": f"data:image/jpeg;base64,{photo_b64}",
-                    },
+                    "character": character,
                     "voice": {
                         "type": "audio",
                         "audio_url": f"data:audio/mpeg;base64,{audio_b64}",
@@ -209,7 +331,7 @@ async def check_video_status_heygen(video_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
-                             company_name: str, photo_bytes: bytes,
+                             company_name: str, avatar_id: str,
                              voice_pref: str = "female"):
     """Run the full video pipeline: script → audio → video."""
     job = video_jobs.get(job_id)
@@ -231,7 +353,7 @@ async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
 
         # Step 3: Video
         job["status"] = "video"
-        video_id = await generate_video_heygen(audio_bytes, photo_bytes)
+        video_id = await generate_video_heygen(audio_bytes, avatar_id)
         console.print(f"  [dim]HeyGen job submitted: {video_id}[/dim]")
 
         # Poll for completion (max 5 minutes)

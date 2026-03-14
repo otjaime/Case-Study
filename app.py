@@ -15,7 +15,8 @@ from decomposer import decompose_jd
 from generator import generate_case_study, generate_case_study_streaming, score_case_quality
 from applier import generate_application_streaming
 from deck import generate_deck_pdf, generate_slide_deck_pdf
-from video import create_video_job, get_video_job, run_video_pipeline
+from video import (create_video_job, get_video_job, run_video_pipeline,
+                   list_elevenlabs_voices, list_heygen_avatars)
 from pitch import create_pitch_job, get_pitch_job, run_pitch_pipeline
 
 load_dotenv(override=True)
@@ -336,6 +337,20 @@ async def pitch_status(job_id: str):
     })
 
 
+@app.get("/elevenlabs-voices")
+async def elevenlabs_voices():
+    """Fetch available ElevenLabs voices."""
+    voices = await list_elevenlabs_voices()
+    return JSONResponse(voices)
+
+
+@app.get("/heygen-avatars")
+async def heygen_avatars():
+    """Fetch available HeyGen avatars and talking photos."""
+    data = await list_heygen_avatars()
+    return JSONResponse(data)
+
+
 @app.post("/generate-video")
 async def generate_video(request: Request):
     """Start an async video generation pipeline (script → audio → lip-sync)."""
@@ -347,29 +362,20 @@ async def generate_video(request: Request):
     markdown = body.get("markdown", "").strip()
     profile = body.get("profile") or {}
     company_name = body.get("company_name", "").strip()
-    photo_b64 = body.get("photo_b64", "").strip()
+    avatar_id = body.get("avatar_id", "").strip()
     voice_pref = body.get("voice_pref", "female").strip()
 
     if not markdown:
         return JSONResponse({"error": "Diagnostic markdown is required."}, status_code=400)
-    if not photo_b64:
-        return JSONResponse({"error": "Photo is required."}, status_code=400)
-
-    import base64
-    try:
-        photo_bytes = base64.b64decode(photo_b64)
-    except Exception:
-        return JSONResponse({"error": "Invalid photo data."}, status_code=400)
-
-    if len(photo_bytes) > 5 * 1024 * 1024:
-        return JSONResponse({"error": "Photo must be under 5MB."}, status_code=400)
+    if not avatar_id:
+        return JSONResponse({"error": "Avatar selection is required."}, status_code=400)
 
     job_id = create_video_job()
 
     # Launch pipeline as background task
     asyncio.create_task(
         run_video_pipeline(job_id, markdown, profile, company_name,
-                           photo_bytes, voice_pref)
+                           avatar_id, voice_pref)
     )
 
     return JSONResponse({"job_id": job_id})

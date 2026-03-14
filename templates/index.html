@@ -511,8 +511,7 @@
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label>Voice</label>
                     <select id="pitch_voice" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
-                        <option value="female">Female (Rachel)</option>
-                        <option value="male">Male (Josh)</option>
+                        <option value="">Loading voices...</option>
                     </select>
                 </div>
                 <button class="pitch-btn" id="pitch-btn">Generate Audio Pitch</button>
@@ -533,19 +532,18 @@
             <!-- Video explainer section -->
             <div class="video-section" id="video-section" style="display:none; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e8e8;">
                 <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Video Explainer</h3>
-                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Upload a headshot to generate a 2-minute video presenting your diagnosis.</p>
+                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Select an avatar and voice to generate a 2-minute video presenting your diagnosis.</p>
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Your Photo <span class="optional">(headshot, clear face, JPEG/PNG)</span></label>
-                    <div class="file-upload">
-                        <input type="file" id="photo_file" accept="image/jpeg,image/png">
-                        <span class="file-name" id="photo-file-name"></span>
-                    </div>
+                    <label>Avatar</label>
+                    <select id="avatar_select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
+                        <option value="">Loading avatars...</option>
+                    </select>
+                    <img id="avatar-preview" src="" alt="" style="display:none; margin-top: 8px; width: 80px; height: 80px; border-radius: 8px; object-fit: cover; border: 1px solid #ddd;">
                 </div>
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label>Voice</label>
                     <select id="voice_pref" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
-                        <option value="female">Female (Rachel)</option>
-                        <option value="male">Male (Josh)</option>
+                        <option value="">Loading voices...</option>
                     </select>
                 </div>
                 <button class="video-btn" id="video-btn">Generate Video Explainer</button>
@@ -573,6 +571,111 @@
         // Store structured data from apply SSE for deck/video export
         let storedProfile = null;
         let storedMappingQuality = null;
+        // Dynamic voice/avatar lists (fetched once from APIs)
+        let availableVoices = null;
+        let availableAvatars = null;
+
+        async function fetchVoicesAndAvatars() {
+            // Fetch voices
+            if (!availableVoices) {
+                try {
+                    const resp = await fetch('/elevenlabs-voices');
+                    const voices = await resp.json();
+                    availableVoices = voices;
+                    populateVoiceSelectors(voices);
+                } catch (e) {
+                    console.error('Failed to fetch voices:', e);
+                    populateVoiceSelectors([]);
+                }
+            }
+            // Fetch avatars
+            if (!availableAvatars) {
+                try {
+                    const resp = await fetch('/heygen-avatars');
+                    const data = await resp.json();
+                    availableAvatars = data;
+                    populateAvatarSelector(data);
+                } catch (e) {
+                    console.error('Failed to fetch avatars:', e);
+                    populateAvatarSelector({ avatars: [], talking_photos: [] });
+                }
+            }
+        }
+
+        function populateVoiceSelectors(voices) {
+            const selectors = [document.getElementById('pitch_voice'), document.getElementById('voice_pref')];
+            selectors.forEach(sel => {
+                if (!sel) return;
+                sel.innerHTML = '';
+                if (!voices || voices.length === 0) {
+                    sel.innerHTML = '<option value="female">Female (Rachel) — default</option><option value="male">Male (Josh) — default</option>';
+                    return;
+                }
+                voices.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.voice_id;
+                    const parts = [v.name];
+                    if (v.gender) parts.push(v.gender);
+                    if (v.accent) parts.push(v.accent);
+                    opt.textContent = parts.join(' — ');
+                    sel.appendChild(opt);
+                });
+            });
+        }
+
+        function populateAvatarSelector(data) {
+            const sel = document.getElementById('avatar_select');
+            if (!sel) return;
+            sel.innerHTML = '';
+
+            const avatars = (data && data.avatars) || [];
+            const talkingPhotos = (data && data.talking_photos) || [];
+
+            if (avatars.length === 0 && talkingPhotos.length === 0) {
+                sel.innerHTML = '<option value="">No avatars available</option>';
+                return;
+            }
+
+            if (avatars.length > 0) {
+                const group = document.createElement('optgroup');
+                group.label = 'Avatars';
+                avatars.forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = 'avatar:' + a.avatar_id;
+                    opt.textContent = a.name + (a.gender ? ' (' + a.gender + ')' : '');
+                    opt.dataset.preview = a.preview_image_url || '';
+                    group.appendChild(opt);
+                });
+                sel.appendChild(group);
+            }
+
+            if (talkingPhotos.length > 0) {
+                const group = document.createElement('optgroup');
+                group.label = 'Talking Photos';
+                talkingPhotos.forEach(tp => {
+                    const opt = document.createElement('option');
+                    opt.value = 'talking_photo:' + tp.talking_photo_id;
+                    opt.textContent = tp.name;
+                    opt.dataset.preview = tp.preview_image_url || '';
+                    group.appendChild(opt);
+                });
+                sel.appendChild(group);
+            }
+
+            // Show preview on change
+            sel.addEventListener('change', () => {
+                const selected = sel.options[sel.selectedIndex];
+                const preview = document.getElementById('avatar-preview');
+                if (selected && selected.dataset.preview) {
+                    preview.src = selected.dataset.preview;
+                    preview.style.display = 'block';
+                } else {
+                    preview.style.display = 'none';
+                }
+            });
+            // Trigger initial preview
+            sel.dispatchEvent(new Event('change'));
+        }
 
         const STATUS_MESSAGES = {
             decomposing: 'Analyzing job description...',
@@ -996,6 +1099,8 @@
                 document.getElementById('pitch-section').style.display = 'block';
                 // Show video section
                 document.getElementById('video-section').style.display = 'block';
+                // Fetch dynamic voice/avatar lists
+                fetchVoicesAndAvatars();
 
             } catch (err) {
                 applyLoading.style.display = 'none';
@@ -1056,21 +1161,10 @@
 
         // --- Video Explainer ---
 
-        // Photo file name display
-        document.getElementById('photo_file').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            const nameEl = document.getElementById('photo-file-name');
-            if (file) {
-                nameEl.textContent = file.name;
-            }
-        });
-
         // Video generation
         document.getElementById('video-btn').addEventListener('click', async () => {
-            const photoFile = document.getElementById('photo_file').files[0];
-            if (!photoFile) { alert('Please upload a headshot photo.'); return; }
-            if (photoFile.size > 5 * 1024 * 1024) { alert('Photo must be under 5MB.'); return; }
-            if (!photoFile.type.startsWith('image/')) { alert('Please upload a JPEG or PNG image.'); return; }
+            const avatarVal = document.getElementById('avatar_select').value;
+            if (!avatarVal) { alert('Please select an avatar.'); return; }
 
             const btn = document.getElementById('video-btn');
             btn.disabled = true;
@@ -1079,15 +1173,6 @@
             document.getElementById('video-result').style.display = 'none';
 
             try {
-                // Read photo as base64
-                const arrayBuffer = await photoFile.arrayBuffer();
-                const bytes = new Uint8Array(arrayBuffer);
-                let binary = '';
-                for (let i = 0; i < bytes.length; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const photoB64 = btoa(binary);
-
                 const response = await fetch('/generate-video', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1095,7 +1180,7 @@
                         markdown: applyMarkdown,
                         profile: storedProfile || {},
                         company_name: storedCompanyName,
-                        photo_b64: photoB64,
+                        avatar_id: avatarVal,
                         voice_pref: document.getElementById('voice_pref').value,
                     }),
                 });
