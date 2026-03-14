@@ -247,8 +247,6 @@ async def generate_video_heygen(audio_bytes: bytes, avatar_id: str) -> str:
       - "talking_photo:<id>" → uses type "talking_photo"
       - bare id → defaults to type "avatar"
     """
-    import base64
-
     api_key = os.environ.get("HEYGEN_API_KEY")
     if not api_key:
         raise ValueError("HEYGEN_API_KEY not set")
@@ -270,9 +268,27 @@ async def generate_video_heygen(audio_bytes: bytes, avatar_id: str) -> str:
             "avatar_id": avatar_id,
         }
 
-    audio_b64 = base64.b64encode(audio_bytes).decode()
-
     async with httpx.AsyncClient(timeout=60.0) as client:
+        # Step 1: Upload audio to HeyGen (they require a hosted URL, not base64)
+        upload_resp = await client.post(
+            "https://upload.heygen.com/v1/asset",
+            headers={
+                "x-api-key": api_key,
+                "Content-Type": "audio/mpeg",
+            },
+            content=audio_bytes,
+        )
+        if upload_resp.status_code != 200:
+            raise ValueError(f"HeyGen audio upload failed: {upload_resp.status_code} — {upload_resp.text[:200]}")
+
+        upload_data = upload_resp.json().get("data", {})
+        audio_url = upload_data.get("url")
+        if not audio_url:
+            raise ValueError(f"HeyGen upload did not return audio URL: {upload_resp.json()}")
+
+        console.print(f"  [dim]Audio uploaded to HeyGen: {audio_url[:60]}...[/dim]")
+
+        # Step 2: Generate video with uploaded audio URL
         response = await client.post(
             f"{HEYGEN_API_URL}/v2/video/generate",
             headers={
@@ -284,7 +300,7 @@ async def generate_video_heygen(audio_bytes: bytes, avatar_id: str) -> str:
                     "character": character,
                     "voice": {
                         "type": "audio",
-                        "audio_url": f"data:audio/mpeg;base64,{audio_b64}",
+                        "audio_url": audio_url,
                     },
                 }],
                 "dimension": {"width": 1280, "height": 720},
