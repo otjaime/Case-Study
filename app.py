@@ -16,7 +16,7 @@ from generator import generate_case_study, generate_case_study_streaming, score_
 from applier import generate_application_streaming
 from deck import generate_deck_pdf, generate_slide_deck_pdf
 from video import create_video_job, get_video_job, run_video_pipeline
-from pitch import generate_pitch
+from pitch import create_pitch_job, get_pitch_job, run_pitch_pipeline
 
 load_dotenv(override=True)
 
@@ -291,7 +291,7 @@ async def export_deck(request: Request):
 
 @app.post("/generate-pitch")
 async def generate_pitch_endpoint(request: Request):
-    """Generate an audio pitch narration aligned to the slide deck."""
+    """Start an async pitch generation pipeline (condense → script → audio)."""
     try:
         body = await request.json()
     except Exception:
@@ -309,20 +309,31 @@ async def generate_pitch_endpoint(request: Request):
             status_code=400,
         )
 
-    try:
-        result = await generate_pitch(
-            markdown=markdown,
-            jd_text=jd_text,
-            candidate_name=candidate_name,
-            company_name=company_name,
-            voice_pref=voice_pref,
-        )
-        return JSONResponse(result)
-    except Exception as exc:
-        return JSONResponse(
-            {"error": f"Pitch generation failed: {str(exc)}"},
-            status_code=500,
-        )
+    job_id = create_pitch_job()
+
+    asyncio.create_task(
+        run_pitch_pipeline(job_id, markdown, jd_text,
+                           candidate_name, company_name, voice_pref)
+    )
+
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/pitch-status/{job_id}")
+async def pitch_status(job_id: str):
+    """Poll for pitch generation status."""
+    job = get_pitch_job(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found."}, status_code=404)
+
+    return JSONResponse({
+        "status": job["status"],
+        "script": job.get("script"),
+        "audio_b64": job.get("audio_b64"),
+        "audio_available": job.get("audio_available", False),
+        "word_count": job.get("word_count", 0),
+        "error": job.get("error"),
+    })
 
 
 @app.post("/generate-video")

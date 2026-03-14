@@ -1156,13 +1156,22 @@
         });
 
         // --- Audio Pitch ---
+        const PITCH_STATUS_TEXT = {
+            pending: 'Starting pitch pipeline...',
+            condensing: 'Analyzing slides...',
+            scripting: 'Writing narration script...',
+            audio: 'Generating voiceover...',
+            ready: 'Pitch ready!',
+        };
+
         document.getElementById('pitch-btn').addEventListener('click', async () => {
             const btn = document.getElementById('pitch-btn');
             btn.disabled = true;
-            btn.textContent = 'Generating...';
+            btn.textContent = 'Starting...';
             document.getElementById('pitch-error').style.display = 'none';
             document.getElementById('pitch-result').style.display = 'none';
             document.getElementById('pitch-loading').style.display = 'block';
+            document.getElementById('pitch-loading-text').textContent = 'Starting pitch pipeline...';
 
             try {
                 const response = await fetch('/generate-pitch', {
@@ -1178,49 +1187,74 @@
                 });
 
                 const data = await response.json();
+                if (data.error) throw new Error(data.error);
 
-                document.getElementById('pitch-loading').style.display = 'none';
+                const jobId = data.job_id;
 
-                if (data.error && !data.script) {
-                    throw new Error(data.error);
-                }
+                // Poll every 2 seconds
+                const poll = setInterval(async () => {
+                    try {
+                        const statusResp = await fetch('/pitch-status/' + jobId);
+                        const status = await statusResp.json();
 
-                document.getElementById('pitch-result').style.display = 'block';
+                        document.getElementById('pitch-loading-text').textContent =
+                            PITCH_STATUS_TEXT[status.status] || status.status;
 
-                // Script display
-                if (data.script) {
-                    document.getElementById('pitch-script').textContent = data.script;
-                    document.getElementById('pitch-word-count').textContent = (data.word_count || 0) + ' words';
-                }
+                        if (status.status === 'ready') {
+                            clearInterval(poll);
+                            document.getElementById('pitch-loading').style.display = 'none';
+                            document.getElementById('pitch-result').style.display = 'block';
 
-                // Audio playback
-                if (data.audio_available && data.audio_b64) {
-                    const binaryStr = atob(data.audio_b64);
-                    const bytes = new Uint8Array(binaryStr.length);
-                    for (let i = 0; i < binaryStr.length; i++) {
-                        bytes[i] = binaryStr.charCodeAt(i);
+                            // Script display
+                            if (status.script) {
+                                document.getElementById('pitch-script').textContent = status.script;
+                                document.getElementById('pitch-word-count').textContent = (status.word_count || 0) + ' words';
+                            }
+
+                            // Audio playback
+                            if (status.audio_available && status.audio_b64) {
+                                const binaryStr = atob(status.audio_b64);
+                                const bytes = new Uint8Array(binaryStr.length);
+                                for (let i = 0; i < binaryStr.length; i++) {
+                                    bytes[i] = binaryStr.charCodeAt(i);
+                                }
+                                const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+                                const audioUrl = URL.createObjectURL(audioBlob);
+                                document.getElementById('pitch-audio').src = audioUrl;
+                                document.getElementById('pitch-audio').style.display = 'block';
+                                document.getElementById('pitch-no-audio').style.display = 'none';
+                            } else {
+                                document.getElementById('pitch-audio').style.display = 'none';
+                                const noAudioEl = document.getElementById('pitch-no-audio');
+                                noAudioEl.textContent = status.error || 'Audio unavailable — script is shown below.';
+                                noAudioEl.style.display = 'block';
+                                document.getElementById('pitch-script').style.display = 'block';
+                                document.getElementById('pitch-script-toggle').textContent = 'Hide script';
+                            }
+
+                            btn.disabled = false;
+                            btn.textContent = 'Generate Audio Pitch';
+                        }
+
+                        if (status.status === 'error') {
+                            clearInterval(poll);
+                            document.getElementById('pitch-loading').style.display = 'none';
+                            const errorEl = document.getElementById('pitch-error');
+                            errorEl.textContent = 'Pitch failed: ' + (status.error || 'unknown');
+                            errorEl.style.display = 'block';
+                            btn.disabled = false;
+                            btn.textContent = 'Generate Audio Pitch';
+                        }
+                    } catch (pollErr) {
+                        console.error('Pitch polling error:', pollErr);
                     }
-                    const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    document.getElementById('pitch-audio').src = audioUrl;
-                    document.getElementById('pitch-audio').style.display = 'block';
-                    document.getElementById('pitch-no-audio').style.display = 'none';
-                } else {
-                    // No audio — show warning and script
-                    document.getElementById('pitch-audio').style.display = 'none';
-                    const noAudioEl = document.getElementById('pitch-no-audio');
-                    noAudioEl.textContent = data.error || 'Audio unavailable — script is shown below.';
-                    noAudioEl.style.display = 'block';
-                    // Auto-show script when audio is unavailable
-                    document.getElementById('pitch-script').style.display = 'block';
-                    document.getElementById('pitch-script-toggle').textContent = 'Hide script';
-                }
+                }, 2000);
+
             } catch (err) {
                 document.getElementById('pitch-loading').style.display = 'none';
                 const errorEl = document.getElementById('pitch-error');
                 errorEl.textContent = 'Pitch generation failed: ' + err.message;
                 errorEl.style.display = 'block';
-            } finally {
                 btn.disabled = false;
                 btn.textContent = 'Generate Audio Pitch';
             }

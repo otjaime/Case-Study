@@ -1,13 +1,15 @@
 """Audio pitch generator: slide-aligned narration for the PDF deck.
 
 Pipeline: condense_for_slides() -> generate_pitch_script() -> generate_audio()
-Total time: ~8-10 seconds (synchronous).
+Runs as async background task with polling (same pattern as video.py).
 Cost: ~$0.02 per pitch (Haiku ~$0.001 + ElevenLabs ~$0.02).
 """
 
 import os
 import json
+import uuid
 import base64
+from datetime import datetime, timedelta
 
 import anthropic
 from rich.console import Console
@@ -18,6 +20,45 @@ from video import generate_audio
 console = Console()
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+
+# ---------------------------------------------------------------------------
+# In-memory job store (same pattern as video.py)
+# ---------------------------------------------------------------------------
+
+pitch_jobs: dict[str, dict] = {}
+
+
+def _cleanup_old_jobs():
+    """Remove jobs older than 1 hour."""
+    cutoff = datetime.utcnow() - timedelta(hours=1)
+    expired = [
+        jid for jid, job in pitch_jobs.items()
+        if datetime.fromisoformat(job["created"]) < cutoff
+    ]
+    for jid in expired:
+        del pitch_jobs[jid]
+
+
+def create_pitch_job() -> str:
+    """Create a new pitch job entry and return its ID."""
+    _cleanup_old_jobs()
+    job_id = str(uuid.uuid4())[:8]
+    pitch_jobs[job_id] = {
+        "status": "pending",
+        "created": datetime.utcnow().isoformat(),
+        "script": None,
+        "audio_b64": None,
+        "audio_available": False,
+        "word_count": 0,
+        "error": None,
+    }
+    return job_id
+
+
+def get_pitch_job(job_id: str) -> dict | None:
+    """Get a pitch job by ID."""
+    return pitch_jobs.get(job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -80,17 +121,7 @@ RULES:
 
 async def generate_pitch_script(slide_data: dict, candidate_name: str,
                                 company_name: str) -> str:
-    """Generate a per-slide narration script from condensed slide data.
-
-    Args:
-        slide_data: Dict from condense_for_slides() with situation_summary,
-                    stat_cards, actions, insight, first_30_days, close_line.
-        candidate_name: Candidate's name for the intro.
-        company_name: Target company name.
-
-    Returns:
-        Script text (~280-300 words, 6 paragraphs separated by blank lines).
-    """
+    """Generate a per-slide narration script from condensed slide data."""
     client = anthropic.AsyncAnthropic()
 
     slide_data_json = json.dumps(slide_data, indent=2, ensure_ascii=False)
@@ -119,73 +150,63 @@ async def generate_pitch_script(slide_data: dict, candidate_name: str,
 
 
 # ---------------------------------------------------------------------------
-# Full pipeline: condense -> script -> audio
+# Async pipeline (background task)
 # ---------------------------------------------------------------------------
 
-async def generate_pitch(markdown: str, jd_text: str, candidate_name: str,
-                         company_name: str,
-                         voice_pref: str = "female") -> dict:
-    """Full pitch pipeline: condense slides -> generate script -> TTS audio.
+async def run_pitch_pipeline(job_id: str, markdown: str, jd_text: str,
+                             candidate_name: str, company_name: str,
+                             voice_pref: str = "female"):
+    """Run the full pitch pipeline as a background task.
 
-    Args:
-        markdown: Full diagnostic document markdown (from apply step).
-        jd_text: Original job description text (for AI/tooling detection).
-        candidate_name: Candidate name for intro.
-        company_name: Target company.
-        voice_pref: "female" or "male" for ElevenLabs voice.
-
-    Returns:
-        Dict with keys:
-            - script (str): The narration text.
-            - audio_b64 (str | None): Base64-encoded MP3, or None if unavailable.
-            - audio_available (bool): Whether audio was generated.
-            - word_count (int): Script word count.
-            - error (str | None): Error message if something went partially wrong.
+    Updates job status as it progresses:
+        pending -> condensing -> scripting -> audio -> ready (or error)
     """
-    # Step 1: Condense diagnostic into slide data
-    console.print("[bold]Pitch: condensing diagnostic for slides...[/bold]")
-    slide_data = await condense_for_slides(markdown, jd_text=jd_text)
+    job = pitch_jobs.get(job_id)
+    if not job:
+        return
 
-    if slide_data is None:
-        console.print("  [yellow]Haiku condensation failed — using regex fallback[/yellow]")
-        slide_data = fallback_slide_extraction(markdown)
+    try:
+        # Step 1: Condense diagnostic into slide data
+        job["status"] = "condensing"
+        console.print("[bold]Pitch: condensing diagnostic for slides...[/bold]")
+        slide_data = await condense_for_slides(markdown, jd_text=jd_text)
 
-    if not slide_data or not slide_data.get("actions"):
-        raise ValueError("Could not extract slide data from diagnostic — markdown may be empty or malformed")
+        if slide_data is None:
+            console.print("  [yellow]Haiku condensation failed — using regex fallback[/yellow]")
+            slide_data = fallback_slide_extraction(markdown)
 
-    # Step 2: Generate script from slide data
-    console.print("[bold]Pitch: generating script...[/bold]")
-    script = await generate_pitch_script(slide_data, candidate_name, company_name)
+        if not slide_data or not slide_data.get("actions"):
+            raise ValueError("Could not extract slide data from diagnostic")
 
-    if not script or len(script.strip()) < 50:
-        raise ValueError("Script generation returned empty or unusable text")
+        # Step 2: Generate script from slide data
+        job["status"] = "scripting"
+        console.print("[bold]Pitch: generating script...[/bold]")
+        script = await generate_pitch_script(slide_data, candidate_name, company_name)
 
-    word_count = len(script.split())
+        if not script or len(script.strip()) < 50:
+            raise ValueError("Script generation returned empty or unusable text")
 
-    # Step 3: Generate audio (if ElevenLabs key is available)
-    audio_b64 = None
-    audio_available = False
-    audio_error = None
+        job["script"] = script
+        job["word_count"] = len(script.split())
 
-    elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not elevenlabs_key:
-        console.print("  [yellow]ELEVENLABS_API_KEY not set — returning script only[/yellow]")
-        audio_error = "Audio unavailable: ElevenLabs API key not configured. Script is available below."
-    else:
-        try:
-            console.print("[bold]Pitch: generating audio...[/bold]")
-            audio_bytes = await generate_audio(script, voice_pref)
-            audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-            audio_available = True
-            console.print(f"  [green]Audio generated: {len(audio_bytes):,} bytes[/green]")
-        except Exception as exc:
-            console.print(f"  [red]Audio generation failed: {exc}[/red]")
-            audio_error = f"Audio generation failed: {str(exc)}. Script is available below."
+        # Step 3: Generate audio (if ElevenLabs key is available)
+        elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY")
+        if not elevenlabs_key:
+            console.print("  [yellow]ELEVENLABS_API_KEY not set — script only[/yellow]")
+            job["status"] = "ready"
+            job["error"] = "Audio unavailable: ElevenLabs API key not configured."
+            return
 
-    return {
-        "script": script,
-        "audio_b64": audio_b64,
-        "audio_available": audio_available,
-        "word_count": word_count,
-        "error": audio_error,
-    }
+        job["status"] = "audio"
+        console.print("[bold]Pitch: generating audio...[/bold]")
+        audio_bytes = await generate_audio(script, voice_pref)
+        job["audio_b64"] = base64.b64encode(audio_bytes).decode("ascii")
+        job["audio_available"] = True
+        console.print(f"  [green]Audio generated: {len(audio_bytes):,} bytes[/green]")
+
+        job["status"] = "ready"
+
+    except Exception as exc:
+        console.print(f"  [red]Pitch pipeline error: {exc}[/red]")
+        job["status"] = "error"
+        job["error"] = str(exc)
