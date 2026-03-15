@@ -1,8 +1,13 @@
-"""AI video explainer: script generation, TTS, and lip-sync video."""
+"""Loom-style video: slide deck + pitch voiceover + optional photo bubble."""
 
+import io
 import os
+import json
 import uuid
 import asyncio
+import shutil
+import subprocess
+import tempfile
 import time
 from datetime import datetime, timedelta
 
@@ -21,19 +26,17 @@ VOICES = {
 }
 
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
-HEYGEN_API_URL = "https://api.heygen.com"
 
 # ---------------------------------------------------------------------------
 # Caches for API list fetchers (1-hour TTL)
 # ---------------------------------------------------------------------------
 
 _voices_cache: dict = {"data": None, "fetched_at": 0}
-_avatars_cache: dict = {"data": None, "fetched_at": 0}
 _CACHE_TTL = 3600  # 1 hour
 
 
 # ---------------------------------------------------------------------------
-# List fetchers
+# ElevenLabs voice list (used by pitch + video voice selectors)
 # ---------------------------------------------------------------------------
 
 async def list_elevenlabs_voices() -> list[dict]:
@@ -77,52 +80,6 @@ async def list_elevenlabs_voices() -> list[dict]:
         return _voices_cache["data"] or []
 
 
-async def list_heygen_avatars() -> dict:
-    """Fetch available avatars from HeyGen API. Cached for 1 hour."""
-    api_key = os.environ.get("HEYGEN_API_KEY")
-    if not api_key:
-        return {"avatars": [], "talking_photos": []}
-
-    if _avatars_cache["data"] is not None and (time.time() - _avatars_cache["fetched_at"]) < _CACHE_TTL:
-        return _avatars_cache["data"]
-
-    result = {"avatars": [], "talking_photos": []}
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(
-                f"{HEYGEN_API_URL}/v2/avatars",
-                headers={"x-api-key": api_key},
-            )
-            if resp.status_code != 200:
-                console.print(f"  [yellow]HeyGen avatars fetch failed: {resp.status_code}[/yellow]")
-                return _avatars_cache["data"] or result
-
-            data = resp.json().get("data", {})
-
-            for av in data.get("avatars", []):
-                result["avatars"].append({
-                    "avatar_id": av.get("avatar_id", ""),
-                    "name": av.get("avatar_name", "Unknown"),
-                    "gender": av.get("gender", ""),
-                    "preview_image_url": av.get("preview_image_url", ""),
-                })
-
-            for tp in data.get("talking_photos", []):
-                result["talking_photos"].append({
-                    "talking_photo_id": tp.get("talking_photo_id", ""),
-                    "name": tp.get("talking_photo_name", "Unknown"),
-                    "preview_image_url": tp.get("preview_image_url", ""),
-                })
-
-            _avatars_cache["data"] = result
-            _avatars_cache["fetched_at"] = time.time()
-            return result
-
-    except Exception as exc:
-        console.print(f"  [yellow]HeyGen avatars error: {exc}[/yellow]")
-        return _avatars_cache["data"] or result
-
 # ---------------------------------------------------------------------------
 # In-memory job store
 # ---------------------------------------------------------------------------
@@ -148,8 +105,7 @@ def create_video_job() -> str:
     video_jobs[job_id] = {
         "status": "pending",
         "created": datetime.utcnow().isoformat(),
-        "script": None,
-        "video_url": None,
+        "video_bytes": None,
         "error": None,
     }
     return job_id
@@ -161,7 +117,7 @@ def get_video_job(job_id: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Script generation (Haiku)
+# Script generation (Haiku) — fallback when no pitch audio exists
 # ---------------------------------------------------------------------------
 
 SCRIPT_PROMPT = """Condense this diagnostic document into a 2-minute spoken script (~300 words).
@@ -201,7 +157,7 @@ async def generate_script(markdown: str, candidate_name: str,
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Audio generation (ElevenLabs TTS)
+# Audio generation (ElevenLabs TTS)
 # ---------------------------------------------------------------------------
 
 async def generate_audio(script: str, voice_pref: str = "female") -> bytes:
@@ -236,121 +192,158 @@ async def generate_audio(script: str, voice_pref: str = "female") -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Lip-sync video generation (HeyGen)
+# Loom-style video generation (local: PyMuPDF + Pillow + ffmpeg)
 # ---------------------------------------------------------------------------
 
-async def generate_video_heygen(audio_bytes: bytes, avatar_id: str) -> str:
-    """Submit a lip-sync video generation job to HeyGen. Returns video_id.
+def _get_audio_duration(audio_path: str) -> float:
+    """Get audio duration in seconds using ffprobe."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-print_format", "json",
+         "-show_format", audio_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"ffprobe failed: {result.stderr[:200]}")
+    info = json.loads(result.stdout)
+    return float(info["format"]["duration"])
 
-    avatar_id can be:
-      - "avatar:<id>" → uses type "avatar"
-      - "talking_photo:<id>" → uses type "talking_photo"
-      - bare id → defaults to type "avatar"
+
+def _make_circular_photo(photo_bytes: bytes, size: int = 120) -> "Image":
+    """Crop a photo into a circle with a white border, return as RGBA PIL Image."""
+    from PIL import Image, ImageDraw
+
+    img = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
+    # Crop to square
+    w, h = img.size
+    side = min(w, h)
+    left = (w - side) // 2
+    top = (h - side) // 2
+    img = img.crop((left, top, left + side, top + side))
+    img = img.resize((size, size), Image.LANCZOS)
+
+    # Create circular mask
+    mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, size, size), fill=255)
+
+    # Apply mask
+    result = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    result.paste(img, (0, 0), mask)
+
+    # White border ring
+    border = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    border_draw = ImageDraw.Draw(border)
+    border_draw.ellipse((0, 0, size - 1, size - 1), outline=(255, 255, 255, 220), width=3)
+    result = Image.alpha_composite(result, border)
+
+    return result
+
+
+def generate_loom_video(
+    pdf_bytes: bytes,
+    audio_bytes: bytes,
+    photo_bytes: bytes | None = None,
+) -> bytes:
+    """Generate a Loom-style video: slides + voiceover + optional photo bubble.
+
+    Returns MP4 bytes. Runs synchronously (called via asyncio.to_thread).
     """
-    api_key = os.environ.get("HEYGEN_API_KEY")
-    if not api_key:
-        raise ValueError("HEYGEN_API_KEY not set")
+    import fitz  # PyMuPDF
+    from PIL import Image
 
-    # Parse avatar type prefix
-    if avatar_id.startswith("talking_photo:"):
-        character = {
-            "type": "talking_photo",
-            "talking_photo_id": avatar_id.split(":", 1)[1],
-        }
-    elif avatar_id.startswith("avatar:"):
-        character = {
-            "type": "avatar",
-            "avatar_id": avatar_id.split(":", 1)[1],
-        }
-    else:
-        character = {
-            "type": "avatar",
-            "avatar_id": avatar_id,
-        }
+    tmpdir = tempfile.mkdtemp(prefix="loom_video_")
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        # Step 1: Upload audio to HeyGen (they require a hosted URL, not base64)
-        upload_resp = await client.post(
-            "https://upload.heygen.com/v1/asset",
-            headers={
-                "x-api-key": api_key,
-                "Content-Type": "audio/mpeg",
-            },
-            content=audio_bytes,
-        )
-        if upload_resp.status_code != 200:
-            raise ValueError(f"HeyGen audio upload failed: {upload_resp.status_code} — {upload_resp.text[:200]}")
+    try:
+        # 1. PDF → slide images
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        num_slides = len(doc)
+        console.print(f"  [dim]PDF has {num_slides} slides[/dim]")
 
-        upload_data = upload_resp.json().get("data", {})
-        audio_url = upload_data.get("url")
-        if not audio_url:
-            raise ValueError(f"HeyGen upload did not return audio URL: {upload_resp.json()}")
+        # Prepare circular photo overlay if provided
+        photo_overlay = None
+        if photo_bytes:
+            try:
+                photo_overlay = _make_circular_photo(photo_bytes, size=120)
+            except Exception as exc:
+                console.print(f"  [yellow]Photo overlay failed: {exc}[/yellow]")
 
-        console.print(f"  [dim]Audio uploaded to HeyGen: {audio_url[:60]}...[/dim]")
+        for i, page in enumerate(doc):
+            # Render at 150 DPI → ~1280×720 for our 254mm×143mm pages
+            pix = page.get_pixmap(dpi=150)
+            slide_img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGBA")
 
-        # Step 2: Generate video with uploaded audio URL
-        response = await client.post(
-            f"{HEYGEN_API_URL}/v2/video/generate",
-            headers={
-                "x-api-key": api_key,
-                "Content-Type": "application/json",
-            },
-            json={
-                "video_inputs": [{
-                    "character": character,
-                    "voice": {
-                        "type": "audio",
-                        "audio_url": audio_url,
-                    },
-                }],
-                "dimension": {"width": 1280, "height": 720},
-            },
-        )
-        if response.status_code != 200:
-            raise ValueError(f"HeyGen API error: {response.status_code} — {response.text[:200]}")
+            # Overlay photo bubble in bottom-left
+            if photo_overlay:
+                margin = 24
+                x = margin
+                y = slide_img.height - photo_overlay.height - margin
+                slide_img.paste(photo_overlay, (x, y), photo_overlay)
 
-        data = response.json()
-        video_id = data.get("data", {}).get("video_id")
-        if not video_id:
-            raise ValueError(f"HeyGen did not return video_id: {data}")
-        return video_id
+            # Save as RGB PNG (ffmpeg doesn't like RGBA)
+            slide_rgb = slide_img.convert("RGB")
+            slide_rgb.save(os.path.join(tmpdir, f"slide_{i:02d}.png"))
 
+        doc.close()
 
-async def check_video_status_heygen(video_id: str) -> dict:
-    """Poll HeyGen for video generation status."""
-    api_key = os.environ.get("HEYGEN_API_KEY")
-    if not api_key:
-        raise ValueError("HEYGEN_API_KEY not set")
+        # 2. Write audio to temp file
+        audio_path = os.path.join(tmpdir, "audio.mp3")
+        with open(audio_path, "wb") as f:
+            f.write(audio_bytes)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            f"{HEYGEN_API_URL}/v1/video_status.get",
-            headers={"x-api-key": api_key},
-            params={"video_id": video_id},
-        )
-        if response.status_code != 200:
-            return {"status": "error", "error": f"Status check failed: {response.status_code}"}
+        # 3. Get audio duration and calculate per-slide timing
+        total_duration = _get_audio_duration(audio_path)
+        slide_duration = total_duration / num_slides
+        console.print(f"  [dim]Audio: {total_duration:.1f}s, {slide_duration:.1f}s per slide[/dim]")
 
-        data = response.json().get("data", {})
-        status = data.get("status", "unknown")
+        # 4. Write ffmpeg concat file
+        concat_path = os.path.join(tmpdir, "concat.txt")
+        with open(concat_path, "w") as f:
+            for i in range(num_slides):
+                f.write(f"file 'slide_{i:02d}.png'\n")
+                f.write(f"duration {slide_duration:.3f}\n")
+            # Repeat last slide (ffmpeg concat needs it for last duration)
+            f.write(f"file 'slide_{num_slides - 1:02d}.png'\n")
 
-        if status == "completed":
-            return {"status": "completed", "video_url": data.get("video_url", "")}
-        elif status == "failed":
-            return {"status": "failed", "error": data.get("error", "Unknown error")}
-        else:
-            return {"status": "processing"}
+        # 5. Run ffmpeg
+        output_path = os.path.join(tmpdir, "output.mp4")
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0", "-i", concat_path,
+            "-i", audio_path,
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-r", "24", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "128k",
+            "-shortest",
+            output_path,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise ValueError(f"ffmpeg failed: {result.stderr[-300:]}")
+
+        # 6. Read output
+        with open(output_path, "rb") as f:
+            mp4_bytes = f.read()
+
+        console.print(f"  [dim]Video generated: {len(mp4_bytes) / 1024 / 1024:.1f} MB[/dim]")
+        return mp4_bytes
+
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Full pipeline (runs as background task)
 # ---------------------------------------------------------------------------
 
-async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
-                             company_name: str, avatar_id: str,
-                             voice_pref: str = "female",
-                             existing_audio: bytes | None = None):
-    """Run the full video pipeline: script → audio → video.
+async def run_video_pipeline(
+    job_id: str, markdown: str, profile: dict,
+    company_name: str, job_title: str, jd_text: str,
+    voice_pref: str = "female",
+    existing_audio: bytes | None = None,
+    photo_bytes: bytes | None = None,
+):
+    """Run the Loom-style video pipeline: slides PDF → video composition.
 
     If existing_audio is provided (e.g. from pitch), skips ElevenLabs TTS.
     """
@@ -359,12 +352,17 @@ async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
         return
 
     try:
-        # Step 1: Script (still needed for HeyGen even if audio exists)
-        job["status"] = "script"
-        candidate_name = profile.get("nombre", "")
-        script = await generate_script(markdown, candidate_name, company_name)
-        job["script"] = script
-        console.print(f"  [dim]Video script generated ({len(script.split())} words)[/dim]")
+        # Step 1: Generate slide deck PDF
+        job["status"] = "slides"
+        from deck import generate_slide_deck_pdf
+        pdf_bytes = await generate_slide_deck_pdf(
+            markdown=markdown,
+            profile=profile,
+            company_name=company_name,
+            job_title=job_title,
+            jd_text=jd_text,
+        )
+        console.print(f"  [dim]Slide PDF generated ({len(pdf_bytes)} bytes)[/dim]")
 
         # Step 2: Audio — reuse pitch audio if available, otherwise generate
         if existing_audio:
@@ -372,29 +370,20 @@ async def run_video_pipeline(job_id: str, markdown: str, profile: dict,
             console.print(f"  [dim]Reusing pitch audio ({len(audio_bytes)} bytes)[/dim]")
         else:
             job["status"] = "audio"
+            candidate_name = profile.get("nombre", "")
+            script = await generate_script(markdown, candidate_name, company_name)
             audio_bytes = await generate_audio(script, voice_pref)
             console.print(f"  [dim]Audio generated ({len(audio_bytes)} bytes)[/dim]")
 
-        # Step 3: Video
+        # Step 3: Compose video (CPU-bound, run in thread)
         job["status"] = "video"
-        video_id = await generate_video_heygen(audio_bytes, avatar_id)
-        console.print(f"  [dim]HeyGen job submitted: {video_id}[/dim]")
+        mp4_bytes = await asyncio.to_thread(
+            generate_loom_video, pdf_bytes, audio_bytes, photo_bytes
+        )
 
-        # Poll for completion (max 5 minutes)
-        for _ in range(60):
-            await asyncio.sleep(5)
-            result = await check_video_status_heygen(video_id)
-
-            if result["status"] == "completed":
-                job["video_url"] = result["video_url"]
-                job["status"] = "ready"
-                console.print(f"  [bold green]Video ready: {result['video_url'][:60]}...[/bold green]")
-                return
-
-            if result["status"] == "failed":
-                raise ValueError(f"HeyGen generation failed: {result.get('error', 'unknown')}")
-
-        raise ValueError("Video generation timed out (5 minutes)")
+        job["video_bytes"] = mp4_bytes
+        job["status"] = "ready"
+        console.print(f"  [bold green]Loom video ready ({len(mp4_bytes) / 1024 / 1024:.1f} MB)[/bold green]")
 
     except Exception as e:
         job["status"] = "error"

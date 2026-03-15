@@ -27,7 +27,7 @@ Output rendered in browser with streaming + quality bar
   ↓  (optional)
 [pitch.py] → audio pitch narration   (Haiku script + ElevenLabs TTS, ~$0.02)
   ↓  (optional)
-[video.py] → AI video explainer   (Haiku script + ElevenLabs TTS + HeyGen lip-sync)
+[video.py] → Loom-style video   (PyMuPDF + Pillow + ffmpeg, $0 per video)
 ```
 
 Key architectural principle: gaps in case quality are **parsing problems**, not prompt problems. If the decomposer misses a skill (e.g. Amplitude, AI applied to performance), the case will never cover it. The decomposer ensures every tool, task, and KPI from the JD flows through to generation.
@@ -58,13 +58,16 @@ The output reads as if it came from the company's hiring team:
 - `python-dotenv` for env vars
 - `rich` for CLI output formatting
 - `weasyprint` for PDF export (optional)
+- `pymupdf` (fitz) for PDF → image conversion (video pipeline)
+- `Pillow` for image compositing (photo overlay)
+- `ffmpeg` (system) for video composition
 
 ---
 
 ## Project structure
 
 ```
-├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream, POST /export-deck, POST /generate-pitch, POST /generate-video, GET /video-status)
+├── app.py              # FastAPI web server (GET /, POST /generate, POST /generate-stream, POST /apply-stream, POST /export-deck, POST /generate-pitch, POST /generate-video, GET /video-status, GET /video-file)
 ├── main.py             # CLI entry point (--url, --name, --pdf)
 ├── decomposer.py       # JD decomposition → company_profile + requirements_map
 ├── research.py         # Exa + Firecrawl company research (industry-guided, cached)
@@ -74,7 +77,7 @@ The output reads as if it came from the company's hiring team:
 ├── applier.py          # Transforms case study into personalized application document
 ├── deck.py             # Generates presentation-style PDF deck from diagnostic markdown
 ├── pitch.py            # Audio pitch: slide-aligned narration (Haiku script + ElevenLabs TTS)
-├── video.py            # AI video explainer: script (Haiku) → audio (ElevenLabs) → lip-sync (HeyGen)
+├── video.py            # Loom-style video: slide deck + voiceover + photo bubble (PyMuPDF + ffmpeg)
 ├── output.py           # Markdown + PDF file output (CLI)
 ├── templates/
 │   ├── index.html      # Single-page web frontend (SSE streaming, quality bar, apply flow, deck, video)
@@ -149,14 +152,20 @@ The output reads as if it came from the company's hiring team:
 - Cost: ~$0.001 (Haiku) + ~$0.02 (ElevenLabs) = ~$0.021 per pitch
 
 ### video.py
-- AI video explainer pipeline: script → audio → lip-sync video
-- Step 1: `generate_script()` — Haiku condenses diagnostic into ~300 word spoken script (2 minutes)
-- Step 2: `generate_audio()` — ElevenLabs TTS API converts script to audio (pre-made voices: Rachel/Josh)
-- Step 3: `generate_video_heygen()` — HeyGen lip-syncs candidate photo with audio
-- `run_video_pipeline()` orchestrates all 3 steps as async background task
+- Loom-style video: slide deck pages shown sequentially with pitch voiceover + optional photo bubble
+- `generate_loom_video(pdf_bytes, audio_bytes, photo_bytes=None)` — full local composition pipeline
+  - PyMuPDF (`fitz`) splits PDF into per-slide PNG images at 150 DPI (1280×720)
+  - Pillow composites circular candidate photo overlay (bottom-left, 120px) if provided
+  - `ffprobe` detects audio duration, evenly splits across slides
+  - `ffmpeg` concat demuxer + audio track → MP4 (`libx264`, `aac`, 24fps)
+- `_make_circular_photo()` — crops photo to circle with white border via Pillow alpha mask
+- `_get_audio_duration()` — ffprobe subprocess for precise duration
+- `run_video_pipeline()` orchestrates: slides → audio (reuse or generate) → video composition
+- Reuses pitch audio (`existing_audio`) to avoid double ElevenLabs cost
 - In-memory job store with `create_video_job()` / `get_video_job()` + 1-hour TTL cleanup
+- Stores `video_bytes` in job, served via `GET /video-file/{job_id}`
 - Frontend polls `GET /video-status/{job_id}` every 3 seconds
-- Cost: ~$0.16-0.28 per video (Haiku ~$0.001 + ElevenLabs ~$0.02 + HeyGen ~$0.20)
+- Cost: $0 per video (all local — pitch audio already paid ~$0.02)
 
 ---
 
@@ -167,8 +176,7 @@ ANTHROPIC_API_KEY=sk-ant-...     # Required — Claude API
 EXA_API_KEY=...                  # Required — Exa semantic search
 FIRECRAWL_API_KEY=...            # Required — Firecrawl website crawl
 ANTHROPIC_BASE_URL=...           # Optional — defaults to api.anthropic.com
-ELEVENLABS_API_KEY=...           # Optional — for video explainer (ElevenLabs TTS)
-HEYGEN_API_KEY=...               # Optional — for video explainer (HeyGen lip-sync)
+ELEVENLABS_API_KEY=...           # Optional — for audio pitch (ElevenLabs TTS)
 ```
 
 Without Exa/Firecrawl keys, the tool falls back to basic scrapers (much weaker output).
@@ -199,4 +207,4 @@ python main.py --url "https://..." --name "stripe-growth-lead" --pdf
 
 Deployed on Railway via Dockerfile. Auto-deploys from GitHub (`otjaime/Case-Study`).
 Set `ANTHROPIC_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY` in Railway variables.
-For video feature: also set `ELEVENLABS_API_KEY` and `HEYGEN_API_KEY`.
+For audio pitch: also set `ELEVENLABS_API_KEY`.

@@ -16,7 +16,7 @@ from generator import generate_case_study, generate_case_study_streaming, score_
 from applier import generate_application_streaming
 from deck import generate_deck_pdf, generate_slide_deck_pdf
 from video import (create_video_job, get_video_job, run_video_pipeline,
-                   list_elevenlabs_voices, list_heygen_avatars)
+                   list_elevenlabs_voices)
 from pitch import create_pitch_job, get_pitch_job, run_pitch_pipeline
 
 load_dotenv(override=True)
@@ -344,16 +344,9 @@ async def elevenlabs_voices():
     return JSONResponse(voices)
 
 
-@app.get("/heygen-avatars")
-async def heygen_avatars():
-    """Fetch available HeyGen avatars and talking photos."""
-    data = await list_heygen_avatars()
-    return JSONResponse(data)
-
-
 @app.post("/generate-video")
 async def generate_video(request: Request):
-    """Start an async video generation pipeline (script → audio → lip-sync)."""
+    """Start Loom-style video generation (slides + voiceover + optional photo)."""
     try:
         body = await request.json()
     except Exception:
@@ -362,30 +355,39 @@ async def generate_video(request: Request):
     markdown = body.get("markdown", "").strip()
     profile = body.get("profile") or {}
     company_name = body.get("company_name", "").strip()
-    avatar_id = body.get("avatar_id", "").strip()
+    job_title = body.get("job_title", "").strip()
+    jd_text = body.get("jd_text", "").strip()
     voice_pref = body.get("voice_pref", "female").strip()
     pitch_audio_b64 = body.get("pitch_audio_b64", "").strip()
+    photo_b64 = body.get("photo_b64", "").strip()
 
     if not markdown:
         return JSONResponse({"error": "Diagnostic markdown is required."}, status_code=400)
-    if not avatar_id:
-        return JSONResponse({"error": "Avatar selection is required."}, status_code=400)
+
+    import base64
 
     # Decode pitch audio if provided (reuse instead of calling ElevenLabs again)
     existing_audio = None
     if pitch_audio_b64:
-        import base64
         try:
             existing_audio = base64.b64decode(pitch_audio_b64)
         except Exception:
             pass
 
+    # Decode photo if provided (optional, for corner bubble)
+    photo_bytes = None
+    if photo_b64:
+        try:
+            photo_bytes = base64.b64decode(photo_b64)
+        except Exception:
+            pass
+
     job_id = create_video_job()
 
-    # Launch pipeline as background task
     asyncio.create_task(
         run_video_pipeline(job_id, markdown, profile, company_name,
-                           avatar_id, voice_pref, existing_audio)
+                           job_title, jd_text, voice_pref,
+                           existing_audio, photo_bytes)
     )
 
     return JSONResponse({"job_id": job_id})
@@ -398,9 +400,23 @@ async def video_status(job_id: str):
     if not job:
         return JSONResponse({"error": "Job not found."}, status_code=404)
 
+    video_url = f"/video-file/{job_id}" if job["status"] == "ready" else None
+
     return JSONResponse({
         "status": job["status"],
-        "video_url": job.get("video_url"),
-        "script": job.get("script"),
+        "video_url": video_url,
         "error": job.get("error"),
     })
+
+
+@app.get("/video-file/{job_id}")
+async def video_file(job_id: str):
+    """Serve the generated MP4 video."""
+    job = get_video_job(job_id)
+    if not job or not job.get("video_bytes"):
+        return JSONResponse({"error": "Video not found."}, status_code=404)
+    return Response(
+        content=job["video_bytes"],
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'inline; filename="video-{job_id}.mp4"'},
+    )

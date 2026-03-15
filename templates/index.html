@@ -532,21 +532,16 @@
             <!-- Video explainer section -->
             <div class="video-section" id="video-section" style="display:none; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e8e8;">
                 <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Video Explainer</h3>
-                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Select an avatar and voice to generate a 2-minute video presenting your diagnosis.</p>
+                <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Generate a Loom-style video: your slide deck with pitch voiceover.</p>
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Avatar</label>
-                    <select id="avatar_select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
-                        <option value="">Loading avatars...</option>
-                    </select>
-                    <img id="avatar-preview" src="" alt="" style="display:none; margin-top: 8px; width: 80px; height: 80px; border-radius: 8px; object-fit: cover; border: 1px solid #ddd;">
+                    <label>Your Photo <span class="optional">(optional — shown as small circle overlay)</span></label>
+                    <div class="file-upload">
+                        <input type="file" id="video_photo" accept="image/jpeg,image/png">
+                        <span class="file-name" id="video-photo-name"></span>
+                    </div>
                 </div>
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Voice</label>
-                    <select id="voice_pref" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff;">
-                        <option value="">Loading voices...</option>
-                    </select>
-                </div>
-                <button class="video-btn" id="video-btn">Generate Video Explainer</button>
+                <div id="video-no-pitch" style="font-size: 13px; color: #999; margin-bottom: 12px;">Generate an audio pitch first to create the video.</div>
+                <button class="video-btn" id="video-btn" disabled>Generate Video</button>
                 <div id="video-progress" style="display:none; margin-top: 12px; text-align: center; padding: 16px;">
                     <div class="spinner" style="width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #7c5cfc; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px;"></div>
                     <span id="video-status-text" style="font-size: 13px; color: #666;"></span>
@@ -573,12 +568,10 @@
         let storedMappingQuality = null;
         // Dynamic voice/avatar lists (fetched once from APIs)
         let availableVoices = null;
-        let availableAvatars = null;
         // Store pitch audio for reuse in video pipeline
         let storedPitchAudioB64 = null;
 
-        async function fetchVoicesAndAvatars() {
-            // Fetch voices
+        async function fetchVoices() {
             if (!availableVoices) {
                 try {
                     const resp = await fetch('/elevenlabs-voices');
@@ -590,93 +583,25 @@
                     populateVoiceSelectors([]);
                 }
             }
-            // Fetch avatars
-            if (!availableAvatars) {
-                try {
-                    const resp = await fetch('/heygen-avatars');
-                    const data = await resp.json();
-                    availableAvatars = data;
-                    populateAvatarSelector(data);
-                } catch (e) {
-                    console.error('Failed to fetch avatars:', e);
-                    populateAvatarSelector({ avatars: [], talking_photos: [] });
-                }
-            }
         }
 
         function populateVoiceSelectors(voices) {
-            const selectors = [document.getElementById('pitch_voice'), document.getElementById('voice_pref')];
-            selectors.forEach(sel => {
-                if (!sel) return;
-                sel.innerHTML = '';
-                if (!voices || voices.length === 0) {
-                    sel.innerHTML = '<option value="female">Female (Rachel) — default</option><option value="male">Male (Josh) — default</option>';
-                    return;
-                }
-                voices.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v.voice_id;
-                    const parts = [v.name];
-                    if (v.gender) parts.push(v.gender);
-                    if (v.accent) parts.push(v.accent);
-                    opt.textContent = parts.join(' — ');
-                    sel.appendChild(opt);
-                });
-            });
-        }
-
-        function populateAvatarSelector(data) {
-            const sel = document.getElementById('avatar_select');
+            const sel = document.getElementById('pitch_voice');
             if (!sel) return;
             sel.innerHTML = '';
-
-            const avatars = (data && data.avatars) || [];
-            const talkingPhotos = (data && data.talking_photos) || [];
-
-            if (avatars.length === 0 && talkingPhotos.length === 0) {
-                sel.innerHTML = '<option value="">No avatars available</option>';
+            if (!voices || voices.length === 0) {
+                sel.innerHTML = '<option value="female">Female (Rachel) — default</option><option value="male">Male (Josh) — default</option>';
                 return;
             }
-
-            if (avatars.length > 0) {
-                const group = document.createElement('optgroup');
-                group.label = 'Avatars';
-                avatars.forEach(a => {
-                    const opt = document.createElement('option');
-                    opt.value = 'avatar:' + a.avatar_id;
-                    opt.textContent = a.name + (a.gender ? ' (' + a.gender + ')' : '');
-                    opt.dataset.preview = a.preview_image_url || '';
-                    group.appendChild(opt);
-                });
-                sel.appendChild(group);
-            }
-
-            if (talkingPhotos.length > 0) {
-                const group = document.createElement('optgroup');
-                group.label = 'Talking Photos';
-                talkingPhotos.forEach(tp => {
-                    const opt = document.createElement('option');
-                    opt.value = 'talking_photo:' + tp.talking_photo_id;
-                    opt.textContent = tp.name;
-                    opt.dataset.preview = tp.preview_image_url || '';
-                    group.appendChild(opt);
-                });
-                sel.appendChild(group);
-            }
-
-            // Show preview on change
-            sel.addEventListener('change', () => {
-                const selected = sel.options[sel.selectedIndex];
-                const preview = document.getElementById('avatar-preview');
-                if (selected && selected.dataset.preview) {
-                    preview.src = selected.dataset.preview;
-                    preview.style.display = 'block';
-                } else {
-                    preview.style.display = 'none';
-                }
+            voices.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.voice_id;
+                const parts = [v.name];
+                if (v.gender) parts.push(v.gender);
+                if (v.accent) parts.push(v.accent);
+                opt.textContent = parts.join(' — ');
+                sel.appendChild(opt);
             });
-            // Trigger initial preview
-            sel.dispatchEvent(new Event('change'));
         }
 
         const STATUS_MESSAGES = {
@@ -1101,8 +1026,8 @@
                 document.getElementById('pitch-section').style.display = 'block';
                 // Show video section
                 document.getElementById('video-section').style.display = 'block';
-                // Fetch dynamic voice/avatar lists
-                fetchVoicesAndAvatars();
+                // Fetch dynamic voice list
+                fetchVoices();
 
             } catch (err) {
                 applyLoading.style.display = 'none';
@@ -1163,16 +1088,32 @@
 
         // --- Video Explainer ---
 
+        // Photo file name display
+        document.getElementById('video_photo').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            document.getElementById('video-photo-name').textContent = file ? file.name : '';
+        });
+
         // Video generation
         document.getElementById('video-btn').addEventListener('click', async () => {
-            const avatarVal = document.getElementById('avatar_select').value;
-            if (!avatarVal) { alert('Please select an avatar.'); return; }
+            if (!storedPitchAudioB64) { alert('Generate an audio pitch first.'); return; }
 
             const btn = document.getElementById('video-btn');
             btn.disabled = true;
             btn.textContent = 'Starting...';
             document.getElementById('video-error').style.display = 'none';
             document.getElementById('video-result').style.display = 'none';
+
+            // Read optional photo as base64
+            let photoB64 = '';
+            const photoFile = document.getElementById('video_photo').files[0];
+            if (photoFile) {
+                const buf = await photoFile.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                photoB64 = btoa(binary);
+            }
 
             try {
                 const response = await fetch('/generate-video', {
@@ -1182,9 +1123,10 @@
                         markdown: applyMarkdown,
                         profile: storedProfile || {},
                         company_name: storedCompanyName,
-                        avatar_id: avatarVal,
-                        voice_pref: document.getElementById('voice_pref').value,
-                        pitch_audio_b64: storedPitchAudioB64 || '',
+                        job_title: storedJobTitle,
+                        jd_text: storedJdText,
+                        pitch_audio_b64: storedPitchAudioB64,
+                        photo_b64: photoB64,
                     }),
                 });
 
@@ -1196,9 +1138,9 @@
 
                 const STATUS_TEXT = {
                     pending: 'Starting video pipeline...',
-                    script: 'Writing video script...',
+                    slides: 'Generating slide images...',
                     audio: 'Generating voiceover...',
-                    video: 'Creating lip-sync video (1-2 min)...',
+                    video: 'Composing video (~10 seconds)...',
                     ready: 'Video ready!',
                 };
 
@@ -1217,7 +1159,7 @@
                             document.getElementById('video-player').src = status.video_url;
                             document.getElementById('video-download').href = status.video_url;
                             btn.disabled = false;
-                            btn.textContent = 'Generate Video Explainer';
+                            btn.textContent = 'Generate Video';
                         }
                         if (status.status === 'error') {
                             clearInterval(poll);
@@ -1226,7 +1168,7 @@
                             errorEl.textContent = 'Video generation failed: ' + (status.error || 'unknown');
                             errorEl.style.display = 'block';
                             btn.disabled = false;
-                            btn.textContent = 'Generate Video Explainer';
+                            btn.textContent = 'Generate Video';
                         }
                     } catch (pollErr) {
                         console.error('Polling error:', pollErr);
@@ -1239,7 +1181,7 @@
                 errorEl.textContent = 'Video generation failed: ' + err.message;
                 errorEl.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Generate Video Explainer';
+                btn.textContent = 'Generate Video';
             }
         });
 
@@ -1323,6 +1265,12 @@
 
                             btn.disabled = false;
                             btn.textContent = 'Generate Audio Pitch';
+
+                            // Enable video button now that pitch audio exists
+                            if (storedPitchAudioB64) {
+                                document.getElementById('video-btn').disabled = false;
+                                document.getElementById('video-no-pitch').style.display = 'none';
+                            }
                         }
 
                         if (status.status === 'error') {
