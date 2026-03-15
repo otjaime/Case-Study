@@ -339,6 +339,7 @@ def generate_loom_video(
 async def run_video_pipeline(
     job_id: str, markdown: str, profile: dict,
     company_name: str, job_title: str, jd_text: str,
+    mapping_quality: dict = None,
     voice_pref: str = "female",
     existing_audio: bytes | None = None,
     photo_bytes: bytes | None = None,
@@ -360,6 +361,7 @@ async def run_video_pipeline(
             profile=profile,
             company_name=company_name,
             job_title=job_title,
+            mapping_quality=mapping_quality or {},
             jd_text=jd_text,
         )
         console.print(f"  [dim]Slide PDF generated ({len(pdf_bytes)} bytes)[/dim]")

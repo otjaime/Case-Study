@@ -357,6 +357,7 @@ async def generate_video(request: Request):
     company_name = body.get("company_name", "").strip()
     job_title = body.get("job_title", "").strip()
     jd_text = body.get("jd_text", "").strip()
+    mapping_quality = body.get("mapping_quality") or {}
     voice_pref = body.get("voice_pref", "female").strip()
     pitch_audio_b64 = body.get("pitch_audio_b64", "").strip()
     photo_b64 = body.get("photo_b64", "").strip()
@@ -386,8 +387,8 @@ async def generate_video(request: Request):
 
     asyncio.create_task(
         run_video_pipeline(job_id, markdown, profile, company_name,
-                           job_title, jd_text, voice_pref,
-                           existing_audio, photo_bytes)
+                           job_title, jd_text, mapping_quality,
+                           voice_pref, existing_audio, photo_bytes)
     )
 
     return JSONResponse({"job_id": job_id})
