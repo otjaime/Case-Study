@@ -6,6 +6,7 @@ Cost: ~$0.02 per pitch (Haiku ~$0.001 + ElevenLabs ~$0.02).
 """
 
 import os
+import re
 import json
 import uuid
 import base64
@@ -74,37 +75,38 @@ SLIDE DATA (what's on each slide):
 CANDIDATE NAME: {candidate_name}
 COMPANY: {company_name}
 
-Write exactly 6 paragraphs, one per slide. Separate paragraphs with a blank line.
+Write exactly 6 sections, one per slide. Each section MUST start with a marker line like [SLIDE 1], [SLIDE 2], etc.
 
-PARAGRAPH 1 — COVER SLIDE (~20 words, 2 sentences):
+[SLIDE 1] — COVER (~20 words, 2 sentences):
 The slide shows: candidate name, company name, role title, tagline.
 You say: a confident intro and your one-sentence thesis about the company's situation.
 Format: "Hi, I'm [name]. After studying [company]'s growth model, I believe the biggest unlock is [thesis from situation_summary]."
 
-PARAGRAPH 2 — DIAGNOSIS SLIDE (~60 words, 3-4 sentences):
+[SLIDE 2] — DIAGNOSIS (~60 words, 3-4 sentences):
 The slide shows: situation_summary headline + 3-4 stat cards with numbers.
 You say: INTERPRET the numbers. Why they matter together. What tension they reveal when combined.
 Do NOT recite the stat values. Say what they MEAN as a system.
 Example: "That CPA looks fine in isolation, but paired with the payback period, it means you're funding growth you won't see returns on for over a year."
 
-PARAGRAPH 3 — ACTION 1 SLIDE (~60 words, 3-4 sentences):
+[SLIDE 3] — ACTION 1 (~60 words, 3-4 sentences):
 The slide shows: problem headline, 3 approach bullets, consequence box, key metric, evidence box.
 You say: WHY this problem is urgent NOW, your reasoning for this specific approach over alternatives, and what your past experience taught you about solving this type of problem. Connect the action to revenue or retention consequence.
 Do NOT list the approach bullets. Explain the LOGIC behind them.
 
-PARAGRAPH 4 — ACTION 2 SLIDE (~60 words, 3-4 sentences):
+[SLIDE 4] — ACTION 2 (~60 words, 3-4 sentences):
 Same structure as Action 1. Additionally, explain how this action COMPOUNDS with Action 1 — why doing both together creates more value than either alone.
 
-PARAGRAPH 5 — INSIGHT SLIDE (~40 words, 2-3 sentences):
+[SLIDE 5] — INSIGHT (~40 words, 2-3 sentences):
 The slide shows: a contrarian claim with conventional vs. reality columns.
 You say: the "aha" moment. Why most people get this wrong and what happens when you get it right. Land this with conviction — it should feel like a reveal, not a summary.
 
-PARAGRAPH 6 — CLOSE SLIDE (~40 words, 2-3 sentences):
+[SLIDE 6] — CLOSE (~40 words, 2-3 sentences):
 The slide shows: 3 first-30-day decisions + contact card.
 You say: confidence about your first moves and a clear, specific ask. Reference the company's central problem.
 End with: "I'd love to walk through [specific problem from the diagnosis] together."
 
 RULES:
+- Start each section with [SLIDE N] on its own line, followed by the spoken text
 - First person, conversational, as if presenting live to the hiring manager
 - Short sentences. Contractions. Occasional "..." for natural pauses
 - NEVER say "as you can see" or "this slide shows" or reference slides directly
@@ -112,12 +114,20 @@ RULES:
 - Use specific company names, tool names, and terms from the slide data
 - The tone is confident and direct, not formal or academic
 - Total word count: 280-300 words (strictly enforced)
-- Respond with ONLY the spoken text. No headers, no stage directions, no markdown, no [brackets]."""
+- Respond with ONLY the marker lines and spoken text. No headers, no stage directions, no markdown."""
 
 
 # ---------------------------------------------------------------------------
 # Script generation
 # ---------------------------------------------------------------------------
+
+_SLIDE_MARKER = re.compile(r"^\[SLIDE \d+\]\s*", re.MULTILINE)
+
+
+def strip_slide_markers(script: str) -> str:
+    """Remove [SLIDE N] markers from script for clean TTS input."""
+    return _SLIDE_MARKER.sub("", script).strip()
+
 
 async def generate_pitch_script(slide_data: dict, candidate_name: str,
                                 company_name: str) -> str:
@@ -187,7 +197,7 @@ async def run_pitch_pipeline(job_id: str, markdown: str, jd_text: str,
             raise ValueError("Script generation returned empty or unusable text")
 
         job["script"] = script
-        job["word_count"] = len(script.split())
+        job["word_count"] = len(strip_slide_markers(script).split())
 
         # Step 3: Generate audio (if ElevenLabs key is available)
         elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY")
@@ -199,7 +209,9 @@ async def run_pitch_pipeline(job_id: str, markdown: str, jd_text: str,
 
         job["status"] = "audio"
         console.print("[bold]Pitch: generating audio...[/bold]")
-        audio_bytes = await generate_audio(script, voice_pref)
+        # Strip [SLIDE N] markers before sending to TTS
+        tts_script = strip_slide_markers(script)
+        audio_bytes = await generate_audio(tts_script, voice_pref)
         job["audio_b64"] = base64.b64encode(audio_bytes).decode("ascii")
         job["audio_available"] = True
         console.print(f"  [green]Audio generated: {len(audio_bytes):,} bytes[/green]")

@@ -2,6 +2,7 @@
 
 import io
 import os
+import re
 import json
 import uuid
 import asyncio
@@ -239,6 +240,54 @@ def _make_circular_photo(photo_bytes: bytes, size: int = 120) -> "Image":
     return result
 
 
+# ---------------------------------------------------------------------------
+# Slide timing from script markers
+# ---------------------------------------------------------------------------
+
+_SLIDE_MARKER_RE = re.compile(r"\[SLIDE\s+(\d+)\]", re.IGNORECASE)
+
+
+def _compute_slide_durations(
+    script_text: str, num_slides: int, total_duration: float
+) -> list[float]:
+    """Compute per-slide durations from pitch script with [SLIDE N] markers.
+
+    Parses [SLIDE 1] ... [SLIDE 2] ... markers, counts words per section,
+    and distributes total_duration proportionally. Falls back to even split
+    if markers aren't found or don't parse correctly.
+    """
+    if not script_text or not script_text.strip():
+        return [total_duration / num_slides] * num_slides
+
+    # Split script by [SLIDE N] markers
+    parts = _SLIDE_MARKER_RE.split(script_text)
+    # parts alternates: [prefix, "1", text1, "2", text2, ...]
+    # Skip the prefix (index 0), then pairs are (number, text)
+    sections = {}
+    for i in range(1, len(parts) - 1, 2):
+        slide_num = int(parts[i])
+        text = parts[i + 1].strip()
+        sections[slide_num] = text
+
+    if not sections:
+        # No markers found — try fallback: split by double newlines (old format)
+        paragraphs = [p.strip() for p in script_text.strip().split("\n\n") if p.strip()]
+        if paragraphs:
+            sections = {i + 1: p for i, p in enumerate(paragraphs)}
+        else:
+            return [total_duration / num_slides] * num_slides
+
+    # Count words per slide, mapping to actual slide indices (0-based)
+    word_counts = []
+    for slide_idx in range(num_slides):
+        slide_num = slide_idx + 1  # 1-based marker numbering
+        text = sections.get(slide_num, "")
+        word_counts.append(max(len(text.split()), 1))
+
+    total_words = sum(word_counts)
+    return [(wc / total_words) * total_duration for wc in word_counts]
+
+
 def generate_loom_video(
     pdf_bytes: bytes,
     audio_bytes: bytes,
@@ -296,32 +345,10 @@ def generate_loom_video(
         # 3. Get audio duration and calculate per-slide timing
         total_duration = _get_audio_duration(audio_path)
 
-        # Word-count proportional timing: each slide gets time proportional
-        # to how many words are spoken during it (from the pitch script).
-        # The pitch script has paragraphs separated by \n\n, one per slide.
-        slide_durations = []
-        paragraphs = [p.strip() for p in script_text.strip().split("\n\n") if p.strip()] if script_text else []
-        if paragraphs and len(paragraphs) >= num_slides:
-            # Use first N paragraphs matching slide count
-            used = paragraphs[:num_slides]
-            word_counts = [max(len(p.split()), 1) for p in used]
-            total_words = sum(word_counts)
-            slide_durations = [(wc / total_words) * total_duration for wc in word_counts]
-        elif paragraphs and len(paragraphs) < num_slides:
-            # Fewer paragraphs than slides: distribute extra evenly across last paragraph's slides
-            word_counts = [max(len(p.split()), 1) for p in paragraphs]
-            total_words = sum(word_counts)
-            para_durations = [(wc / total_words) * total_duration for wc in word_counts]
-            # Map paragraphs to slides: first N-1 paragraphs get 1 slide each,
-            # last paragraph's duration splits across remaining slides
-            for i in range(len(paragraphs) - 1):
-                slide_durations.append(para_durations[i])
-            remaining_slides = num_slides - (len(paragraphs) - 1)
-            per_remaining = para_durations[-1] / remaining_slides
-            slide_durations.extend([per_remaining] * remaining_slides)
-        else:
-            # No script: fall back to even distribution
-            slide_durations = [total_duration / num_slides] * num_slides
+        # Parse [SLIDE N] markers from the pitch script for precise alignment.
+        # Each marker delimits the narration for one slide, so word counts
+        # give us proportional timing that matches actual speech.
+        slide_durations = _compute_slide_durations(script_text, num_slides, total_duration)
 
         timing_info = ", ".join(f"{d:.1f}s" for d in slide_durations)
         console.print(f"  [dim]Audio: {total_duration:.1f}s, per-slide: [{timing_info}][/dim]")
