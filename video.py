@@ -299,10 +299,12 @@ def generate_loom_video(
         concat_path = os.path.join(tmpdir, "concat.txt")
         with open(concat_path, "w") as f:
             for i in range(num_slides):
-                f.write(f"file 'slide_{i:02d}.png'\n")
+                slide_path = os.path.join(tmpdir, f"slide_{i:02d}.png")
+                f.write(f"file '{slide_path}'\n")
                 f.write(f"duration {slide_duration:.3f}\n")
             # Repeat last slide (ffmpeg concat needs it for last duration)
-            f.write(f"file 'slide_{num_slides - 1:02d}.png'\n")
+            last_slide = os.path.join(tmpdir, f"slide_{num_slides - 1:02d}.png")
+            f.write(f"file '{last_slide}'\n")
 
         # 5. Run ffmpeg
         output_path = os.path.join(tmpdir, "output.mp4")
@@ -310,16 +312,18 @@ def generate_loom_video(
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0", "-i", concat_path,
             "-i", audio_path,
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
             "-r", "24", "-preset", "fast",
             "-c:a", "aac", "-b:a", "128k",
             "-shortest",
+            "-movflags", "+faststart",
             output_path,
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
-            raise ValueError(f"ffmpeg failed: {result.stderr[-300:]}")
+            raise ValueError(f"ffmpeg failed: with return code {result.returncode} {result.stderr[-500:]}")
 
         # 6. Read output
         with open(output_path, "rb") as f:
