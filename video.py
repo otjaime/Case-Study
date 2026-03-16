@@ -243,9 +243,12 @@ def generate_loom_video(
     pdf_bytes: bytes,
     audio_bytes: bytes,
     photo_bytes: bytes | None = None,
+    script_text: str = "",
 ) -> bytes:
     """Generate a Loom-style video: slides + voiceover + optional photo bubble.
 
+    Uses word-count proportional timing when script_text is available,
+    so each slide's duration matches the narration being spoken over it.
     Returns MP4 bytes. Runs synchronously (called via asyncio.to_thread).
     """
     import fitz  # PyMuPDF
@@ -292,8 +295,36 @@ def generate_loom_video(
 
         # 3. Get audio duration and calculate per-slide timing
         total_duration = _get_audio_duration(audio_path)
-        slide_duration = total_duration / num_slides
-        console.print(f"  [dim]Audio: {total_duration:.1f}s, {slide_duration:.1f}s per slide[/dim]")
+
+        # Word-count proportional timing: each slide gets time proportional
+        # to how many words are spoken during it (from the pitch script).
+        # The pitch script has paragraphs separated by \n\n, one per slide.
+        slide_durations = []
+        paragraphs = [p.strip() for p in script_text.strip().split("\n\n") if p.strip()] if script_text else []
+        if paragraphs and len(paragraphs) >= num_slides:
+            # Use first N paragraphs matching slide count
+            used = paragraphs[:num_slides]
+            word_counts = [max(len(p.split()), 1) for p in used]
+            total_words = sum(word_counts)
+            slide_durations = [(wc / total_words) * total_duration for wc in word_counts]
+        elif paragraphs and len(paragraphs) < num_slides:
+            # Fewer paragraphs than slides: distribute extra evenly across last paragraph's slides
+            word_counts = [max(len(p.split()), 1) for p in paragraphs]
+            total_words = sum(word_counts)
+            para_durations = [(wc / total_words) * total_duration for wc in word_counts]
+            # Map paragraphs to slides: first N-1 paragraphs get 1 slide each,
+            # last paragraph's duration splits across remaining slides
+            for i in range(len(paragraphs) - 1):
+                slide_durations.append(para_durations[i])
+            remaining_slides = num_slides - (len(paragraphs) - 1)
+            per_remaining = para_durations[-1] / remaining_slides
+            slide_durations.extend([per_remaining] * remaining_slides)
+        else:
+            # No script: fall back to even distribution
+            slide_durations = [total_duration / num_slides] * num_slides
+
+        timing_info = ", ".join(f"{d:.1f}s" for d in slide_durations)
+        console.print(f"  [dim]Audio: {total_duration:.1f}s, per-slide: [{timing_info}][/dim]")
 
         # 4. Write ffmpeg concat file
         concat_path = os.path.join(tmpdir, "concat.txt")
@@ -301,7 +332,7 @@ def generate_loom_video(
             for i in range(num_slides):
                 slide_path = os.path.join(tmpdir, f"slide_{i:02d}.png")
                 f.write(f"file '{slide_path}'\n")
-                f.write(f"duration {slide_duration:.3f}\n")
+                f.write(f"duration {slide_durations[i]:.3f}\n")
             # Repeat last slide (ffmpeg concat needs it for last duration)
             last_slide = os.path.join(tmpdir, f"slide_{num_slides - 1:02d}.png")
             f.write(f"file '{last_slide}'\n")
@@ -347,14 +378,18 @@ async def run_video_pipeline(
     voice_pref: str = "female",
     existing_audio: bytes | None = None,
     photo_bytes: bytes | None = None,
+    pitch_script: str = "",
 ):
     """Run the Loom-style video pipeline: slides PDF → video composition.
 
     If existing_audio is provided (e.g. from pitch), skips ElevenLabs TTS.
+    pitch_script is used for word-count proportional slide timing.
     """
     job = video_jobs.get(job_id)
     if not job:
         return
+
+    script_text = pitch_script  # may be overwritten if we generate fresh
 
     try:
         # Step 1: Generate slide deck PDF
@@ -377,14 +412,14 @@ async def run_video_pipeline(
         else:
             job["status"] = "audio"
             candidate_name = profile.get("nombre", "")
-            script = await generate_script(markdown, candidate_name, company_name)
-            audio_bytes = await generate_audio(script, voice_pref)
+            script_text = await generate_script(markdown, candidate_name, company_name)
+            audio_bytes = await generate_audio(script_text, voice_pref)
             console.print(f"  [dim]Audio generated ({len(audio_bytes)} bytes)[/dim]")
 
         # Step 3: Compose video (CPU-bound, run in thread)
         job["status"] = "video"
         mp4_bytes = await asyncio.to_thread(
-            generate_loom_video, pdf_bytes, audio_bytes, photo_bytes
+            generate_loom_video, pdf_bytes, audio_bytes, photo_bytes, script_text
         )
 
         job["video_bytes"] = mp4_bytes

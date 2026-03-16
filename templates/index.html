@@ -570,6 +570,7 @@
         let availableVoices = null;
         // Store pitch audio for reuse in video pipeline
         let storedPitchAudioB64 = null;
+        let storedPitchScript = null;
 
         async function fetchVoices() {
             if (!availableVoices) {
@@ -1127,6 +1128,7 @@
                         jd_text: storedJdText,
                         mapping_quality: storedMappingQuality || {},
                         pitch_audio_b64: storedPitchAudioB64,
+                        pitch_script: storedPitchScript || '',
                         photo_b64: photoB64,
                     }),
                 });
@@ -1238,6 +1240,7 @@
 
                             // Script display
                             if (status.script) {
+                                storedPitchScript = status.script;
                                 document.getElementById('pitch-script').textContent = status.script;
                                 document.getElementById('pitch-word-count').textContent = (status.word_count || 0) + ' words';
                             }
